@@ -84,7 +84,11 @@ button, input, select, textarea {
   justify-content: space-between;
 }
 
-.headline-hide{
+.headline_hide{
+  display: none;
+}
+
+.hide{
   display: none;
 }
 
