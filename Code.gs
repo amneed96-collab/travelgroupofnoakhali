@@ -25,17 +25,41 @@ function generateId(prefix) {
   return prefix + '-' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000);
 }
 
+// একই রিকোয়েস্টের মধ্যে (শুধু GET-এ) একই শীট বারবার পড়া এড়াতে মেমো
+let _memoOn = false;
+const _memo = {};
+
 function sheetToObjects(sheet) {
+  const key = sheet.getName();
+  if (_memoOn && _memo[key]) return _memo[key].map(o => Object.assign({}, o));
   const data = sheet.getDataRange().getValues();
-  if (data.length < 2) return [];
-  const headers = data[0];
-  return data.slice(1)
-    .filter(row => row.some(cell => cell !== '' && cell !== null))
-    .map(row => {
-      const obj = {};
-      headers.forEach((h, i) => (obj[h] = row[i]));
-      return obj;
-    });
+  let result = [];
+  if (data.length >= 2) {
+    const headers = data[0];
+    result = data.slice(1)
+      .filter(row => row.some(cell => cell !== '' && cell !== null))
+      .map(row => {
+        const obj = {};
+        headers.forEach((h, i) => (obj[h] = row[i]));
+        return obj;
+      });
+  }
+  if (_memoOn) _memo[key] = result.map(o => Object.assign({}, o));
+  return result;
+}
+
+// ---------- রেসপন্স ক্যাশ (CacheService) ----------
+// পাবলিক GET রিকোয়েস্টের ফলাফল কিছুক্ষণ ক্যাশে থাকে। যেকোনো লেখার কাজ (POST) হলে ভার্সন বদলে সব ক্যাশ বাতিল হয়।
+// শীটে সরাসরি হাতে এডিট করলে সর্বোচ্চ CACHE_TTL_SEC সেকেন্ড পর নতুন ডেটা দেখা যাবে।
+const CACHE_TTL_SEC = 120;
+const CACHEABLE_ACTIONS = ['getPackagesSummary', 'getPackages', 'getPackage', 'getPackageFull',
+  'getPackageCounts', 'getTeamContacts', 'getAdminNames', 'getSettings', 'getBootstrap'];
+
+function cacheVersion() {
+  try { return CacheService.getScriptCache().get('ver') || '0'; } catch (err) { return '0'; }
+}
+function bumpCacheVersion() {
+  try { CacheService.getScriptCache().put('ver', String(new Date().getTime()), 21600); } catch (err) {}
 }
 
 function jsonResponse(obj) {
@@ -86,8 +110,32 @@ function setupSheets() {
 
 function doGet(e) {
   const action = e.parameter.action;
+  const cacheable = CACHEABLE_ACTIONS.indexOf(action) >= 0;
+  let cacheKey = null;
+  if (cacheable) {
+    cacheKey = 'r|' + cacheVersion() + '|' + action + '|' + (e.parameter.id || e.parameter.packageId || '');
+    try {
+      const hit = CacheService.getScriptCache().get(cacheKey);
+      if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {}
+  }
+  _memoOn = true;
+  const out = handleGet(e);
+  if (cacheable) {
+    try {
+      const text = out.getContent();
+      if (text.indexOf('"ok":true') === 1) CacheService.getScriptCache().put(cacheKey, text, CACHE_TTL_SEC);
+    } catch (err) { /* বড় হলে ক্যাশ হবে না, সমস্যা নেই */ }
+  }
+  return out;
+}
+
+function handleGet(e) {
+  const action = e.parameter.action;
   try {
     switch (action) {
+      case 'getBootstrap':
+        return jsonResponse({ ok: true, data: getBootstrap() });
       case 'getPackagesSummary':
         return jsonResponse({ ok: true, data: getPackagesSummary() });
       case 'getPackages':
@@ -105,7 +153,7 @@ function doGet(e) {
       case 'getReport':
         return jsonResponse({ ok: true, data: getFinanceReport(e.parameter.packageId) });
       case 'getOverallReport':
-        return jsonResponse({ ok: true, data: getOverallReport() });
+        return jsonResponse({ ok: true, data: getOverallReport(e.parameter.mode, e.parameter.year, e.parameter.month) });
       case 'findTickets':
         return jsonResponse({ ok: true, data: findTickets(e.parameter.name, e.parameter.mobile) });
       case 'getAdminNames':
@@ -116,6 +164,8 @@ function doGet(e) {
         return jsonResponse({ ok: true, data: getTeamContacts() });
       case 'getPackageCounts':
         return jsonResponse({ ok: true, data: getPackageCounts() });
+      case 'getSettings':
+        return jsonResponse({ ok: true, data: getSettings() });
       default:
         return jsonResponse({ ok: false, error: 'Unknown action: ' + action });
     }
@@ -125,6 +175,27 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  let act = '';
+  try { act = JSON.parse(e.postData.contents).action; } catch (err) {}
+  try {
+    return handlePost(e);
+  } finally {
+    // শুধু পড়ার/লগইন রিকোয়েস্টে ক্যাশ বাতিল করার দরকার নেই
+    if (act !== 'login' && act !== 'getAdmins') bumpCacheVersion();
+  }
+}
+
+// হোমপেজের জন্য একটি কলেই সব তথ্য
+function getBootstrap() {
+  return {
+    settings: getSettings(),
+    contacts: getTeamContacts(),
+    counts: getPackageCounts(),
+    packages: getPackagesSummary()
+  };
+}
+
+function handlePost(e) {
   const body = JSON.parse(e.postData.contents);
   const action = body.action;
   try {
@@ -159,6 +230,8 @@ function doPost(e) {
         return jsonResponse(manageAdmin(body));
       case 'getAdmins':
         return jsonResponse({ ok: true, data: getAdmins() });
+      case 'saveSettings':
+        return jsonResponse(saveSettings(body));
       default:
         return jsonResponse({ ok: false, error: 'Unknown action: ' + action });
     }
@@ -219,6 +292,58 @@ function uploadPhotoToDrive(base64Data, fileName, mimeType) {
 
   // সরাসরি ছবি হিসেবে দেখানোর জন্য Google-এর ইমেজ প্রক্সি ফরম্যাট
   return 'https://lh3.googleusercontent.com/d/' + file.getId();
+}
+
+// ---------- ওয়েবসাইট সেটিংস (ব্যবস্থাপনা মেনু) ----------
+// Settings শীট (key | value) স্বয়ংক্রিয়ভাবে তৈরি হয়, setupSheets আবার চালানোর দরকার নেই।
+
+const SETTING_KEYS = [
+  'siteNameBn', 'siteNameEn', 'tagline', 'address',
+  'mobile1', 'mobile2', 'mobile3', 'email',
+  'logoUrl', 'heroImageUrl',
+  'facebookUrl', 'youtubeUrl', 'instagramUrl', 'tiktokUrl'
+];
+
+function getSettingsSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('Settings');
+  if (!sheet) {
+    sheet = ss.insertSheet('Settings');
+    sheet.appendRow(['key', 'value']);
+  }
+  return sheet;
+}
+
+function getSettings() {
+  const data = getSettingsSheet().getDataRange().getValues();
+  const result = {};
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0]) result[data[i][0]] = String(data[i][1] === undefined ? '' : data[i][1]);
+  }
+  return result;
+}
+
+function saveSettings(body) {
+  const sheet = getSettingsSheet();
+  const values = Object.assign({}, body.values || {});
+
+  // নতুন ছবি আপলোড করা হলে Drive-এ রেখে URL বসানো
+  if (body.logoBase64) values.logoUrl = uploadPhotoToDrive(body.logoBase64, body.logoFileName, body.logoMimeType);
+  if (body.heroBase64) values.heroImageUrl = uploadPhotoToDrive(body.heroBase64, body.heroFileName, body.heroMimeType);
+
+  const data = sheet.getDataRange().getValues();
+  const rowByKey = {};
+  for (let i = 1; i < data.length; i++) rowByKey[data[i][0]] = i + 1;
+
+  SETTING_KEYS.forEach(key => {
+    if (values[key] === undefined) return;
+    // মোবাইল নম্বরের শুরুর ০ যেন হারিয়ে না যায়
+    const val = (key.indexOf('mobile') === 0 && values[key]) ? "'" + values[key] : values[key];
+    if (rowByKey[key]) sheet.getRange(rowByKey[key], 2).setValue(val);
+    else sheet.appendRow([key, val]);
+  });
+  SpreadsheetApp.flush();
+  return { ok: true, data: getSettings() };
 }
 
 function manageAdmin(body) {
@@ -784,15 +909,39 @@ function getFinanceReport(packageId) {
   };
 }
 
-function getOverallReport() {
+// তারিখ (Date অবজেক্ট বা টেক্সট) থেকে yyyy-MM-dd বের করা
+function toYMD(v) {
+  if (!v) return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return String(v).slice(0, 10);
+}
+
+// mode: 'month' | 'year' | অন্য কিছু (সর্বমোট)
+function inPeriod(v, mode, year, month) {
+  if (mode !== 'month' && mode !== 'year') return true;
+  const ymd = toYMD(v);
+  if (!ymd) return false;
+  const y = Number(ymd.slice(0, 4)), m = Number(ymd.slice(5, 7));
+  if (mode === 'year') return y === Number(year);
+  return y === Number(year) && m === Number(month);
+}
+
+// mode = 'month' (year+month), 'year' (year), অথবা 'all' (সর্বমোট)
+// আয় ধরা হয় বুকিংয়ের তারিখ অনুযায়ী, ব্যয় ধরা হয় খরচের তারিখ অনুযায়ী
+function getOverallReport(mode, year, month) {
   const packages = getPackages();
-  const allBookings = getBookings().filter(b => b.status !== 'cancelled');
-  const allExpenses = getExpenses();
+  const allBookings = getBookings()
+    .filter(b => b.status !== 'cancelled')
+    .filter(b => inPeriod(b.date || b.createdAt, mode, year, month));
+  const allExpenses = getExpenses().filter(x => inPeriod(x.date || x.createdAt, mode, year, month));
 
   const totalIncome = allBookings.reduce((sum, b) => sum + (Number(b.paidAmount) || 0), 0);
   const totalDue = allBookings.reduce((sum, b) => sum + (Number(b.dueAmount) || 0), 0);
   const totalExpense = allExpenses.reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
 
+  const filtered = (mode === 'month' || mode === 'year');
   const perPackage = packages.map(p => {
     const pBookings = allBookings.filter(b => b.packageId === p.id);
     const pExpenses = allExpenses.filter(x => x.packageId === p.id);
@@ -804,10 +953,11 @@ function getOverallReport() {
       totalIncome: income, totalExpense: expense,
       netProfit: income - expense, totalDue: due, bookings: pBookings.length
     };
-  });
+  }).filter(p => !filtered || p.bookings > 0 || p.totalExpense > 0);
 
   return {
-    totalPackages: packages.length, totalBookings: allBookings.length,
+    mode: filtered ? mode : 'all', year: Number(year) || null, month: Number(month) || null,
+    totalPackages: perPackage.length, totalBookings: allBookings.length,
     totalIncome, totalDue, totalExpense, netProfit: totalIncome - totalExpense,
     perPackage
   };

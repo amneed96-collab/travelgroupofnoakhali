@@ -11,6 +11,9 @@
 
 <link rel="canonical" href="https://amneed96-collab.github.io/travelgroupofnoakhali/">
 
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -26,7 +29,6 @@
     <div class="brand">
       <div class="brand-mark">🧳</div>
       <div>
-
 <div class="headline_hide">
         <h1 class="hide">Travel Group of Noakhali</h1>
         <p>নোয়াখালীর অন্যতম ভ্রমণ কমিউনিটি ও ট্যুর আয়োজক।</p>
@@ -71,6 +73,7 @@
       <div>
         <div class="footer-col-title">সামাজিক মাধ্যম</div>
         <div class="js-social-links"></div>
+        <div class="js-site-contact footer-site-contact"></div>
       </div>
       <div>
         <div class="footer-col-title">এডমিনদের সাথে যোগাযোগ</div>
@@ -92,60 +95,60 @@
   </div>
 </footer>
 
+<script>const SETTINGS_FROM_BOOTSTRAP = true;</script>
 <script src="config.js"></script>
 <script src="api.js"></script>
 <script>
 qs('#year').textContent = new Date().getFullYear();
 
-async function loadFooterAdmins() {
-  try {
-    const res = await apiGet('getTeamContacts');
-    if (!res.ok) return;
-    const admins = res.data.filter(a => a.role === 'admin');
-    const container = qs('#footer-admin-contacts');
-    container.innerHTML = admins.map(a => `
-      <div class="footer-admin-card">
-        ${a.photoUrl ? `<img class="footer-admin-photo" src="${escapeHtml(a.photoUrl)}" alt="${escapeHtml(a.name)}">` : '<div class="footer-admin-photo"></div>'}
-        <div class="footer-admin-info">
-          <div class="name">${escapeHtml(a.name)}</div>
-          ${a.mobile ? `<div>📞 ${escapeHtml(a.mobile)}</div>` : ''}
-          ${a.email ? `<div>✉️ ${escapeHtml(a.email)}</div>` : ''}
-        </div>
+function renderFooterAdmins(people) {
+  const admins = (people || []).filter(a => a.role === 'admin');
+  qs('#footer-admin-contacts').innerHTML = admins.map(a => `
+    <div class="footer-admin-card">
+      ${a.photoUrl ? `<img class="footer-admin-photo" src="${escapeHtml(a.photoUrl)}" alt="${escapeHtml(a.name)}">` : '<div class="footer-admin-photo"></div>'}
+      <div class="footer-admin-info">
+        <div class="name">${escapeHtml(a.name)}</div>
+        ${a.mobile ? `<div>📞 ${escapeHtml(a.mobile)}</div>` : ''}
+        ${a.email ? `<div>✉️ ${escapeHtml(a.email)}</div>` : ''}
       </div>
-    `).join('') || '<span class="text-muted">তথ্য পাওয়া যায়নি</span>';
-  } catch (err) { /* নীরবে ব্যর্থ, ফুটার খালি থাকবে */ }
+    </div>
+  `).join('') || '<span class="text-muted">তথ্য পাওয়া যায়নি</span>';
 }
-loadFooterAdmins();
 
-async function loadPackageCounts() {
-  try {
-    const res = await apiGet('getPackageCounts');
-    if (!res.ok) return;
-    const c = res.data;
-    qs('#pkg-count-strip').innerHTML = `
-      <div class="pkg-count-item"><strong>${toBengaliNumber(c.running)}</strong> টি চলমান প্যাকেজ</div>
-      <div class="pkg-count-item"><strong>${toBengaliNumber(c.completed)}</strong> টি সম্পন্ন হয়েছে</div>
-    `;
-  } catch (err) { /* নীরবে ব্যর্থ */ }
+function renderCounts(c) {
+  if (!c) return;
+  qs('#pkg-count-strip').innerHTML = `
+    <div class="pkg-count-item"><strong>${toBengaliNumber(c.running)}</strong> টি চলমান প্যাকেজ</div>
+    <div class="pkg-count-item"><strong>${toBengaliNumber(c.completed)}</strong> টি সম্পন্ন হয়েছে</div>
+  `;
 }
-loadPackageCounts();
 
-async function loadPackages() {
+function renderPackageList(all) {
   const listEl = qs('#pkg-list');
-  try {
-    // একটাই API কল - সব প্যাকেজ ও সীট সামারি একসাথে (দ্রুত লোড)
-    const res = await apiGet('getPackagesSummary');
-    if (!res.ok) throw new Error(res.error);
-    const packages = res.data.filter(p => p.status === 'active' && !p.isPast);
-
-    if (packages.length === 0) {
-      listEl.innerHTML = '<div class="empty-state">এই মুহূর্তে কোনো সক্রিয় ট্যুর প্যাকেজ নেই। শীঘ্রই নতুন প্যাকেজ আসছে!</div>';
-      return;
-    }
-    listEl.innerHTML = '<div class="pkg-grid">' + packages.map(renderCard).join('') + '</div>';
-  } catch (err) {
-    listEl.innerHTML = '<div class="empty-state">লোড করতে সমস্যা হয়েছে: ' + err.message + '<br><br><span class="text-muted">নিশ্চিত করুন config.js এ সঠিক API_URL বসানো আছে।</span></div>';
+  const packages = (all || []).filter(p => p.status === 'active' && !p.isPast);
+  if (packages.length === 0) {
+    listEl.innerHTML = '<div class="empty-state">এই মুহূর্তে কোনো সক্রিয় ট্যুর প্যাকেজ নেই। শীঘ্রই নতুন প্যাকেজ আসছে!</div>';
+    return;
   }
+  listEl.innerHTML = '<div class="pkg-grid">' + packages.map(renderCard).join('') + '</div>';
+}
+
+// একটাই API কল - সেটিংস, টিম, সংখ্যা ও প্যাকেজ সব একসাথে। আগের সংরক্ষিত ডেটা সাথে সাথে দেখায়, পরে নতুন ডেটা বসায়।
+function loadHome() {
+  apiGetSWR('getBootstrap', null, (res) => {
+    if (!res.ok) throw new Error(res.error);
+    const d = res.data;
+    if (d.settings) {
+      applySettings(d.settings);
+      try { localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(d.settings)); } catch (e) {}
+      renderAllSiteInfo();
+    }
+    renderFooterAdmins(d.contacts);
+    renderCounts(d.counts);
+    renderPackageList(d.packages);
+  }).catch(err => {
+    qs('#pkg-list').innerHTML = '<div class="empty-state">লোড করতে সমস্যা হয়েছে: ' + err.message + '<br><br><span class="text-muted">নিশ্চিত করুন config.js এ সঠিক API_URL বসানো আছে।</span></div>';
+  });
 }
 
 function renderCard(p) {
@@ -175,7 +178,7 @@ function renderCard(p) {
   `;
 }
 
-loadPackages();
+loadHome();
 </script>
 
 

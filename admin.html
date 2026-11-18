@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>এডমিন প্যানেল</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -33,12 +36,12 @@
       </div>
     </div>
     <nav class="admin-nav" id="admin-nav">
-      <a href="#" data-tab="packages" class="active admin-only">📦 প্যাকেজ সমূহ</a>
-      <a href="#" data-tab="new-package" class="admin-only">➕ নতুন প্যাকেজ</a>
+      <a href="#" data-tab="packages" class="active admin-only">📦 প্যাকেজ</a>
       <a href="#" data-tab="bookings">🎫 বুকিং ব্যবস্থাপনা</a>
       <a href="#" data-tab="expenses">💸 খরচ এন্ট্রি</a>
-      <a href="#" data-tab="reports" class="admin-only">📊 আয়-ব্যয় রিপোর্ট</a>
+      <a href="#" data-tab="reports" class="admin-only">📊 রিপোর্ট</a>
       <a href="#" data-tab="admins" class="admin-only">👥 টিম ব্যবস্থাপনা</a>
+      <a href="#" data-tab="settings" class="admin-only">⚙️ ব্যবস্থাপনা</a>
       <a href="#" id="logout-link" style="margin-top:20px; opacity:0.6;">🚪 লগআউট</a>
     </nav>
   </aside>
@@ -98,11 +101,11 @@ qsa('.admin-nav a[data-tab]').forEach(a => {
 
 const TABS = {
   packages: renderPackagesTab,
-  'new-package': renderNewPackageTab,
   bookings: renderBookingsTab,
   expenses: renderExpensesTab,
   reports: renderReportsTab,
-  admins: renderAdminsTab
+  admins: renderAdminsTab,
+  settings: renderSettingsTab
 };
 
 async function loadTab(name) {
@@ -118,7 +121,7 @@ async function loadTab(name) {
 
 async function renderPackagesTab() {
   const main = qs('#admin-main');
-  const res = await apiGet('getPackagesSummary', null, { noCache: true });
+  const res = await apiGet('getPackagesSummary');
   if (!res.ok) throw new Error(res.error);
   const packages = res.data;
   const current = packages.filter(p => !p.isPast);
@@ -151,7 +154,11 @@ async function renderPackagesTab() {
   }
 
   main.innerHTML = `
-    <div class="flex-between"><h2>চলমান প্যাকেজ সমূহ</h2></div>
+    <div class="flex-between"><h2>চলমান প্যাকেজ সমূহ</h2>
+      <button class="btn btn-primary btn-sm" id="toggle-new-pkg-btn">➕ নতুন প্যাকেজ</button>
+    </div>
+    <div id="new-pkg-area" class="mt-24"></div>
+    <div class="mt-24"></div>
     ${renderTable(current, false)}
 
     <div class="flex-between mt-24"><h2>পুরাতন প্যাকেজ (তারিখ পার হয়ে গেছে)</h2></div>
@@ -161,6 +168,7 @@ async function renderPackagesTab() {
   `;
 
   const allPackages = packages;
+  qs('#toggle-new-pkg-btn').addEventListener('click', toggleNewPackageForm);
   qsa('.edit-pkg-btn').forEach(btn => btn.addEventListener('click', () => openEditPackage(allPackages.find(p => p.id === btn.dataset.id))));
   qsa('.print-sheet-btn').forEach(btn => btn.addEventListener('click', () => openBookingSheetPrint(allPackages.find(p => p.id === btn.dataset.id))));
   qsa('.delete-pkg-btn').forEach(btn => btn.addEventListener('click', async () => {
@@ -177,6 +185,7 @@ async function renderPackagesTab() {
 let editVehicleRows = [];
 
 function openEditPackage(pkg) {
+  closeNewPackageForm();
   editVehicleRows = JSON.parse(JSON.stringify(pkg.vehicles));
   const area = qs('#edit-pkg-area');
   area.innerHTML = `
@@ -332,11 +341,26 @@ async function openBookingSheetPrint(pkg) {
 
 let vehicleRows = [{ name: 'বাস-১', type: 'বাস', seatCount: 40 }];
 
-function renderNewPackageTab() {
-  const main = qs('#admin-main');
-  main.innerHTML = `
-    <h2>নতুন ট্যুর প্যাকেজ ঘোষণা</h2>
+function toggleNewPackageForm() {
+  const area = qs('#new-pkg-area');
+  if (area.innerHTML.trim()) closeNewPackageForm(); else openNewPackageForm();
+}
+
+function closeNewPackageForm() {
+  const area = qs('#new-pkg-area');
+  if (area) area.innerHTML = '';
+  const btn = qs('#toggle-new-pkg-btn');
+  if (btn) btn.textContent = '➕ নতুন প্যাকেজ';
+}
+
+function openNewPackageForm() {
+  const area = qs('#new-pkg-area');
+  const editArea = qs('#edit-pkg-area');
+  if (editArea) editArea.innerHTML = '';
+  vehicleRows = [{ name: 'বাস-১', type: 'বাস', seatCount: 40 }];
+  area.innerHTML = `
     <div class="form-card" style="max-width:680px;">
+      <h3 style="margin-top:0;">নতুন ট্যুর প্যাকেজ ঘোষণা</h3>
       <form id="pkg-form">
         <div class="form-group"><label>পর্যটন কেন্দ্রের নাম *</label><input type="text" name="spotName" required placeholder="যেমন: সাজেক ভ্যালি"></div>
         <div class="form-row">
@@ -358,9 +382,12 @@ function renderNewPackageTab() {
       </form>
     </div>
   `;
+  const btn = qs('#toggle-new-pkg-btn');
+  if (btn) btn.textContent = '✕ ফরম বন্ধ করুন';
   renderVehicleRows();
   qs('#add-vehicle-btn').addEventListener('click', () => { vehicleRows.push({ name: '', type: 'বাস', seatCount: 30 }); renderVehicleRows(); });
   qs('#pkg-form').addEventListener('submit', submitNewPackage);
+  area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function renderVehicleRows() {
@@ -409,8 +436,6 @@ async function submitNewPackage(e) {
     showToast('প্যাকেজ সফলভাবে প্রকাশিত হয়েছে!', 'success');
     vehicleRows = [{ name: 'বাস-১', type: 'বাস', seatCount: 40 }];
     loadTab('packages');
-    qsa('.admin-nav a').forEach(x => x.classList.remove('active'));
-    qs('[data-tab="packages"]').classList.add('active');
   } catch (err) {
     showToast('ত্রুটি: ' + err.message, 'error');
     btn.disabled = false; btn.textContent = 'প্যাকেজ প্রকাশ করুন';
@@ -423,7 +448,7 @@ async function submitNewPackage(e) {
 
 async function renderBookingsTab() {
   const main = qs('#admin-main');
-  const pkgRes = await apiGet('getPackages', null, { noCache: true });
+  const pkgRes = await apiGet('getPackages');
   const packages = pkgRes.ok ? pkgRes.data : [];
 
   main.innerHTML = `
@@ -647,7 +672,7 @@ function openHoldSeatsModal(pkg, seats) {
 
 async function renderExpensesTab() {
   const main = qs('#admin-main');
-  const pkgRes = await apiGet('getPackages', null, { noCache: true });
+  const pkgRes = await apiGet('getPackages');
   const packages = pkgRes.ok ? pkgRes.data : [];
 
   main.innerHTML = `
@@ -729,31 +754,95 @@ async function loadExpensesForPackage(pkgId) {
 // ৫. রিপোর্ট (প্রিন্ট সাপোর্টসহ)
 // ============================================================
 
+const BN_MONTHS = ['জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর'];
+let reportFilter = { mode: 'all', year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
+let currentReport = null;
+
+function reportPeriodLabel(f) {
+  if (f.mode === 'month') return BN_MONTHS[f.month - 1] + ' ' + toBengaliNumber(f.year);
+  if (f.mode === 'year') return toBengaliNumber(f.year) + ' সাল';
+  return 'সর্বমোট (সব সময়)';
+}
+function reportTitle(f) {
+  if (f.mode === 'month') return 'মাসিক আয়-ব্যয় রিপোর্ট — ' + reportPeriodLabel(f);
+  if (f.mode === 'year') return 'বাৎসরিক আয়-ব্যয় রিপোর্ট — ' + reportPeriodLabel(f);
+  return 'সর্বমোট আয়-ব্যয় রিপোর্ট';
+}
+function totalsOf(overall, single) {
+  const t = single || overall;
+  return { income: t.totalIncome, expense: t.totalExpense, due: t.totalDue, net: t.netProfit };
+}
+function profitLabel(net) { return net >= 0 ? 'সর্বমোট লাভ' : 'সর্বমোট লস'; }
+function rowResultText(net) { return (net >= 0 ? 'লাভ ' : 'লস ') + formatTaka(Math.abs(net)); }
+
 async function renderReportsTab() {
   const session = Session.get();
   if (session.role !== 'admin') { qs('#admin-main').innerHTML = '<div class="empty-state">এই পাতা শুধু এডমিনের জন্য।</div>'; return; }
 
   const main = qs('#admin-main');
-  const res = await apiGet('getOverallReport', null, { noCache: true });
-  if (!res.ok) throw new Error(res.error);
-  const r = res.data;
+  const curYear = new Date().getFullYear();
+  const years = [];
+  for (let y = curYear + 1; y >= curYear - 6; y--) years.push(y);
+  const f = reportFilter;
 
   main.innerHTML = `
-    <div class="flex-between"><h2>মোট আয়-ব্যয় রিপোর্ট</h2>
-      <button class="btn btn-outline-forest btn-sm" id="print-all-report-btn">🖨️ সব প্যাকেজ একসাথে প্রিন্ট</button>
+    <div class="flex-between"><h2>রিপোর্ট</h2>
+      <button class="btn btn-outline-forest btn-sm" id="print-all-report-btn">🖨️ সব প্যাকেজের রিপোর্ট প্রিন্ট</button>
     </div>
-    <div class="stat-grid">
-      <div class="stat-card"><div class="label">মোট প্যাকেজ</div><div class="value">${toBengaliNumber(r.totalPackages)}</div></div>
-      <div class="stat-card"><div class="label">মোট বুকিং</div><div class="value">${toBengaliNumber(r.totalBookings)}</div></div>
-      <div class="stat-card gold"><div class="label">মোট আয় (জমা)</div><div class="value">${formatTaka(r.totalIncome)}</div></div>
-      <div class="stat-card red"><div class="label">মোট বকেয়া</div><div class="value">${formatTaka(r.totalDue)}</div></div>
-      <div class="stat-card red"><div class="label">মোট ব্যয়</div><div class="value">${formatTaka(r.totalExpense)}</div></div>
-      <div class="stat-card"><div class="label">${r.netProfit >= 0 ? 'নীট লাভ' : 'নীট লোকসান'}</div><div class="value" style="color:${r.netProfit >= 0 ? 'var(--forest)' : 'var(--red)'};">${formatTaka(Math.abs(r.netProfit))} ${r.netProfit >= 0 ? '(লাভ)' : '(লস)'}</div></div>
+    <div class="report-filter">
+      <div class="form-group"><label>রিপোর্টের ধরন</label>
+        <select id="rf-mode">
+          <option value="month" ${f.mode === 'month' ? 'selected' : ''}>মাসিক</option>
+          <option value="year" ${f.mode === 'year' ? 'selected' : ''}>বাৎসরিক</option>
+          <option value="all" ${f.mode === 'all' ? 'selected' : ''}>সর্বমোট</option>
+        </select>
+      </div>
+      <div class="form-group" id="rf-month-group"><label>মাস</label>
+        <select id="rf-month">${BN_MONTHS.map((m, i) => `<option value="${i + 1}" ${f.month === i + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select>
+      </div>
+      <div class="form-group" id="rf-year-group"><label>বছর</label>
+        <select id="rf-year">${years.map(y => `<option value="${y}" ${f.year === y ? 'selected' : ''}>${toBengaliNumber(y)}</option>`).join('')}</select>
+      </div>
     </div>
+    <div id="report-body"><div class="spinner"></div></div>
+  `;
 
-    <div class="flex-between"><h3>প্যাকেজ ভিত্তিক আয়-ব্যয়</h3></div>
+  const syncVisibility = () => {
+    qs('#rf-month-group').style.display = reportFilter.mode === 'month' ? '' : 'none';
+    qs('#rf-year-group').style.display = reportFilter.mode === 'all' ? 'none' : '';
+  };
+  syncVisibility();
+  const onChange = () => {
+    reportFilter.mode = qs('#rf-mode').value;
+    reportFilter.month = Number(qs('#rf-month').value);
+    reportFilter.year = Number(qs('#rf-year').value);
+    syncVisibility();
+    loadReportBody();
+  };
+  qs('#rf-mode').addEventListener('change', onChange);
+  qs('#rf-month').addEventListener('change', onChange);
+  qs('#rf-year').addEventListener('change', onChange);
+  qs('#print-all-report-btn').addEventListener('click', () => { if (currentReport) printReport(currentReport, null, reportFilter); });
+
+  await loadReportBody();
+}
+
+async function loadReportBody() {
+  const body = qs('#report-body');
+  if (!body) return;
+  body.innerHTML = '<div class="spinner"></div>';
+  const f = Object.assign({}, reportFilter);
+  const res = await apiGet('getOverallReport', { mode: f.mode, year: f.year, month: f.month }, { noCache: true });
+  if (!qs('#report-body')) return; // অন্য ট্যাবে চলে গেলে
+  if (!res.ok) { body.innerHTML = '<div class="empty-state">রিপোর্ট লোড করতে সমস্যা হয়েছে</div>'; return; }
+  const r = res.data;
+  currentReport = r;
+  const t = totalsOf(r, null);
+
+  body.innerHTML = `
+    <p class="text-muted" style="margin-top:0;">📅 <strong>${reportPeriodLabel(f)}</strong> · প্যাকেজ: ${toBengaliNumber(r.perPackage.length)}টি · বুকিং: ${toBengaliNumber(r.totalBookings)}টি</p>
     <div class="table-wrap"><table>
-      <thead><tr><th>স্পট</th><th>বুকিং</th><th>আয়</th><th>ব্যয়</th><th>বকেয়া</th><th>ফলাফল</th><th>প্রিন্ট</th></tr></thead>
+      <thead><tr><th>স্পট</th><th>বুকিং</th><th>আয়</th><th>ব্যয়</th><th>বকেয়া</th><th>লাভ/লস</th><th>প্রিন্ট</th></tr></thead>
       <tbody>
         ${r.perPackage.map(p => `
           <tr>
@@ -762,51 +851,140 @@ async function renderReportsTab() {
             <td>${formatTaka(p.totalIncome)}</td>
             <td>${formatTaka(p.totalExpense)}</td>
             <td>${formatTaka(p.totalDue)}</td>
-            <td style="font-weight:700; color:${p.netProfit >= 0 ? 'var(--forest)' : 'var(--red)'};">${formatTaka(Math.abs(p.netProfit))} ${p.netProfit >= 0 ? '(লাভ)' : '(লস)'}</td>
-            <td><button class="btn btn-sm btn-outline-forest print-one-report-btn" data-id="${p.packageId}" data-name="${escapeHtml(p.spotName)}">🖨️</button></td>
+            <td style="font-weight:700; color:${p.netProfit >= 0 ? 'var(--forest)' : 'var(--red)'};">${rowResultText(p.netProfit)}</td>
+            <td><button class="btn btn-sm btn-outline-forest print-one-report-btn" data-id="${escapeHtml(p.packageId)}">🖨️</button></td>
           </tr>
-        `).join('') || '<tr><td colspan="7" class="text-center text-muted">কোনো তথ্য নেই</td></tr>'}
+        `).join('') || '<tr><td colspan="7" class="text-center text-muted">এই সময়ে কোনো তথ্য নেই</td></tr>'}
       </tbody>
     </table></div>
+    <div class="report-totals-wrap">
+      <div class="report-totals">
+        <div class="rt-row"><span>সর্বমোট আয় :</span><strong>${formatTaka(t.income)}</strong></div>
+        <div class="rt-row"><span>সর্বমোট ব্যয় :</span><strong>${formatTaka(t.expense)}</strong></div>
+        <div class="rt-row"><span>সর্বমোট বকেয়া :</span><strong>${formatTaka(t.due)}</strong></div>
+        <div class="rt-row rt-result ${t.net >= 0 ? 'profit' : 'loss'}"><span>${profitLabel(t.net)} :</span><strong>${formatTaka(Math.abs(t.net))}</strong></div>
+      </div>
+    </div>
   `;
 
-  qs('#print-all-report-btn').addEventListener('click', () => printReport(r, null));
   qsa('.print-one-report-btn').forEach(btn => btn.addEventListener('click', () => {
     const p = r.perPackage.find(x => x.packageId === btn.dataset.id);
-    printReport(r, p);
+    printPackageDetail(p.packageId, p.spotName);
   }));
 }
 
-function printReport(overall, singlePkg) {
-  const win = window.open('', '_blank');
-  const rows = singlePkg ? [singlePkg] : overall.perPackage;
-  const title = singlePkg ? 'আয়-ব্যয় রিপোর্ট — ' + singlePkg.spotName : 'সার্বিক আয়-ব্যয় রিপোর্ট (সব প্যাকেজ একসাথে)';
+// একটি প্যাকেজের বিস্তারিত আয়-ব্যয় রিপোর্ট (সব আয় ও সব ব্যয়সহ, সময়ের ফিল্টার ছাড়া)
+async function printPackageDetail(packageId, spotName) {
+  const win = window.open('', '_blank'); // ক্লিকের সাথে সাথে খুলতে হবে, নইলে ব্রাউজার আটকায়
+  if (!win) { showToast('পপআপ ব্লক করা আছে, অনুমতি দিন', 'error'); return; }
+  win.document.write('<p style="font-family:sans-serif;padding:30px;">রিপোর্ট তৈরি হচ্ছে...</p>');
+  const [bkRes, exRes] = await Promise.all([
+    apiGet('getBookings', { packageId }, { noCache: true }),
+    apiGet('getExpenses', { packageId }, { noCache: true })
+  ]);
+  const bookings = (bkRes.ok ? bkRes.data : []).filter(b => b.status !== 'cancelled');
+  const expenses = exRes.ok ? exRes.data : [];
+  const income = bookings.reduce((s, b) => s + (Number(b.paidAmount) || 0), 0);
+  const due = bookings.reduce((s, b) => s + (Number(b.dueAmount) || 0), 0);
+  const expense = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+  const net = income - expense;
+  const color = net >= 0 ? '#1B4332' : '#B3413B';
+  const methodLabel = { bkash: 'বিকাশ', nagad: 'নগদ', cash: 'হাতে হাতে' };
+  const seatText = b => (b.seats || []).map(s => s.vehicleName + '-' + s.seatNo).join(', ');
+  const incomeRows = bookings.filter(b => Number(b.paidAmount) > 0);
 
-  const resultCell = (p) => `<span style="color:${p.netProfit >= 0 ? '#1B4332' : '#B3413B'}; font-weight:bold;">${formatTaka(Math.abs(p.netProfit))} ${p.netProfit >= 0 ? '(লাভ)' : '(লস)'}</span>`;
-
-  win.document.write(`
-    <html><head><meta charset="UTF-8"><title>${title}</title>
+  const html = `
+    <html><head><meta charset="UTF-8"><title>${escapeHtml(spotName)} - বিস্তারিত রিপোর্ট</title>
     <style>
       body { font-family: 'Hind Siliguri', sans-serif; padding: 30px; }
-      table { width:100%; border-collapse:collapse; margin-top:16px; font-size:14px; }
-      th, td { border:1px solid #999; padding:8px 10px; text-align:left; }
-      th { background:#eee; }
-      .totals { margin-top:20px; font-size:16px; padding:14px; border:2px solid #1B4332; border-radius:8px; }
+      .org { text-align:center; font-weight:bold; font-size:18px; }
+      h2 { text-align:center; margin: 4px 0 18px; font-size:18px; }
+      h3 { margin: 24px 0 6px; font-size:16px; }
+      table.list { width:100%; border-collapse:collapse; font-size:13px; }
+      table.list th, table.list td { border:1px solid #999; padding:6px 9px; text-align:left; }
+      table.list th { background:#eee; }
+      td.num, th.num { text-align:right !important; }
+      .totals-wrap { display:flex; justify-content:flex-end; margin-top:24px; }
+      table.totals { border-collapse:collapse; min-width:300px; font-size:15px; }
+      table.totals td { border:1px solid #1B4332; padding:8px 14px; }
+      table.totals td:last-child { text-align:right; font-weight:bold; }
+      .print-footer { margin-top: 30px; text-align:center; font-size: 11px; color: #999; }
+    </style></head><body>
+      <div class="org">${escapeHtml(SITE_CONFIG.groupNameBn)}</div>
+      <h2>বিস্তারিত আয়-ব্যয় রিপোর্ট — ${escapeHtml(spotName)}</h2>
+
+      <h3>আয় (বুকিং থেকে জমা)</h3>
+      <table class="list">
+        <thead><tr><th>ক্রম</th><th>তারিখ</th><th>নাম</th><th>মোবাইল</th><th>সীট</th><th>মাধ্যম</th><th class="num">জমা</th></tr></thead>
+        <tbody>
+          ${incomeRows.map((b, i) => `<tr><td>${toBengaliNumber(i + 1)}</td><td>${formatDate(b.date)}</td><td>${escapeHtml(b.name)}</td><td>${escapeHtml(b.mobile)}</td><td>${escapeHtml(seatText(b))}</td><td>${methodLabel[b.paymentMethod] || ''}</td><td class="num">${formatTaka(b.paidAmount)}</td></tr>`).join('') || '<tr><td colspan="7" style="text-align:center;">কোনো আয় নেই</td></tr>'}
+          <tr><td colspan="6" class="num"><strong>মোট আয়</strong></td><td class="num"><strong>${formatTaka(income)}</strong></td></tr>
+        </tbody>
+      </table>
+
+      <h3>ব্যয়</h3>
+      <table class="list">
+        <thead><tr><th>ক্রম</th><th>তারিখ</th><th>শিরোনাম</th><th>ক্যাটাগরি</th><th>নোট</th><th class="num">পরিমাণ</th></tr></thead>
+        <tbody>
+          ${expenses.map((x, i) => `<tr><td>${toBengaliNumber(i + 1)}</td><td>${formatDate(x.date)}</td><td>${escapeHtml(x.title)}</td><td>${escapeHtml(x.category)}</td><td>${escapeHtml(x.note)}</td><td class="num">${formatTaka(x.amount)}</td></tr>`).join('') || '<tr><td colspan="6" style="text-align:center;">কোনো ব্যয় নেই</td></tr>'}
+          <tr><td colspan="5" class="num"><strong>মোট ব্যয়</strong></td><td class="num"><strong>${formatTaka(expense)}</strong></td></tr>
+        </tbody>
+      </table>
+
+      <div class="totals-wrap">
+        <table class="totals">
+          <tr><td>মোট আয় :</td><td>${formatTaka(income)}</td></tr>
+          <tr><td>মোট ব্যয় :</td><td>${formatTaka(expense)}</td></tr>
+          <tr><td>মোট বকেয়া :</td><td>${formatTaka(due)}</td></tr>
+          <tr><td style="color:${color}; font-weight:bold;">${net >= 0 ? 'মোট লাভ' : 'মোট লস'} :</td><td style="color:${color};">${formatTaka(Math.abs(net))}</td></tr>
+        </table>
+      </div>
+      <div class="print-footer">${escapeHtml(SITE_CONFIG.poweredByLine)}</div>
+      <script>window.onload = () => window.print();<\/script>
+    </body></html>`;
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
+
+function printReport(overall, singlePkg, filter) {
+  const win = window.open('', '_blank');
+  const rows = singlePkg ? [singlePkg] : overall.perPackage;
+  const title = reportTitle(filter) + (singlePkg ? ' (' + singlePkg.spotName + ')' : '');
+  const t = totalsOf(overall, singlePkg);
+  const color = (n) => n >= 0 ? '#1B4332' : '#B3413B';
+
+  win.document.write(`
+    <html><head><meta charset="UTF-8"><title>${escapeHtml(title)}</title>
+    <style>
+      body { font-family: 'Hind Siliguri', sans-serif; padding: 30px; }
+      .org { text-align:center; margin-bottom: 4px; font-weight:bold; font-size:18px; }
+      h2 { text-align:center; margin: 0 0 6px; font-size:18px; }
+      table.main { width:100%; border-collapse:collapse; margin-top:16px; font-size:14px; }
+      table.main th, table.main td { border:1px solid #999; padding:8px 10px; text-align:left; }
+      table.main th { background:#eee; }
+      .totals-wrap { display:flex; justify-content:flex-end; margin-top:20px; }
+      table.totals { border-collapse:collapse; min-width:300px; font-size:15px; }
+      table.totals td { border:1px solid #1B4332; padding:8px 14px; }
+      table.totals td:last-child { text-align:right; font-weight:bold; }
       .print-footer { margin-top: 30px; text-align:center; font-size: 11px; color: #999; }
     </style></head>
     <body>
-      <h2>${title}</h2>
-      <table>
-        <thead><tr><th>স্পট</th><th>বুকিং সংখ্যা</th><th>মোট আয়</th><th>মোট ব্যয়</th><th>বকেয়া</th><th>ফলাফল</th></tr></thead>
+      <div class="org">${escapeHtml(SITE_CONFIG.groupNameBn)}</div>
+      <h2>${escapeHtml(title)}</h2>
+      <table class="main">
+        <thead><tr><th>স্পট</th><th>বুকিং সংখ্যা</th><th>মোট আয়</th><th>মোট ব্যয়</th><th>বকেয়া</th><th>লাভ/লস</th></tr></thead>
         <tbody>
-          ${rows.map(p => `<tr><td>${escapeHtml(p.spotName)}</td><td>${toBengaliNumber(p.bookings)}</td><td>${formatTaka(p.totalIncome)}</td><td>${formatTaka(p.totalExpense)}</td><td>${formatTaka(p.totalDue)}</td><td>${resultCell(p)}</td></tr>`).join('')}
+          ${rows.map(p => `<tr><td>${escapeHtml(p.spotName)}</td><td>${toBengaliNumber(p.bookings)}</td><td>${formatTaka(p.totalIncome)}</td><td>${formatTaka(p.totalExpense)}</td><td>${formatTaka(p.totalDue)}</td><td style="color:${color(p.netProfit)}; font-weight:bold;">${rowResultText(p.netProfit)}</td></tr>`).join('') || '<tr><td colspan="6" style="text-align:center;">এই সময়ে কোনো তথ্য নেই</td></tr>'}
         </tbody>
       </table>
-      <div class="totals">
-        <strong>সর্বমোট আয়:</strong> ${formatTaka(singlePkg ? singlePkg.totalIncome : overall.totalIncome)} &nbsp;&nbsp;
-        <strong>সর্বমোট ব্যয়:</strong> ${formatTaka(singlePkg ? singlePkg.totalExpense : overall.totalExpense)} &nbsp;&nbsp;
-        <strong>সর্বমোট বকেয়া:</strong> ${formatTaka(singlePkg ? singlePkg.totalDue : overall.totalDue)} &nbsp;&nbsp;
-        <strong>সর্বমোট ফলাফল:</strong> ${resultCell({ netProfit: singlePkg ? singlePkg.netProfit : overall.netProfit })}
+      <div class="totals-wrap">
+        <table class="totals">
+          <tr><td>সর্বমোট আয় :</td><td>${formatTaka(t.income)}</td></tr>
+          <tr><td>সর্বমোট ব্যয় :</td><td>${formatTaka(t.expense)}</td></tr>
+          <tr><td>সর্বমোট বকেয়া :</td><td>${formatTaka(t.due)}</td></tr>
+          <tr><td style="color:${color(t.net)}; font-weight:bold;">${profitLabel(t.net)} :</td><td style="color:${color(t.net)};">${formatTaka(Math.abs(t.net))}</td></tr>
+        </table>
       </div>
       <div class="print-footer">${escapeHtml(SITE_CONFIG.poweredByLine)}</div>
       <script>window.onload = () => window.print();<\/script>
@@ -835,80 +1013,45 @@ async function renderAdminsTab() {
   selectedPhotoBase64 = null; selectedPhotoMime = null; selectedPhotoName = null;
 
   main.innerHTML = `
-    <h2>টিম ব্যবস্থাপনা (এডমিন / মডারেটর / হোস্ট)</h2>
-    <div class="form-card" style="max-width:620px; margin-bottom:24px;">
-      <div class="form-group">
-        <label>সদস্য নির্বাচন করুন</label>
-        <select id="team-member-select">
-          <option value="">➕ নতুন সদস্য যোগ করুন</option>
-          ${admins.map(a => `<option value="${escapeHtml(a.username)}">${escapeHtml(a.name)} (${escapeHtml(a.username)}) — ${roleLabel(a.role)}</option>`).join('')}
-        </select>
-      </div>
-
-      <h3 id="team-form-title" style="margin-top:18px;">নতুন সদস্য যোগ করুন</h3>
-      <form id="admin-form">
-        <div class="form-group">
-          <label>প্রোফাইল ছবি</label>
-          <div class="photo-box" id="photo-box">
-            <img id="photo-preview" style="display:none;">
-            <span id="photo-placeholder">📷</span>
-          </div>
-          <input type="file" id="photo-file-input" accept="image/*" style="margin-top:8px;">
-          <div class="hint">সরাসরি কম্পিউটার/মোবাইল থেকে ছবি বেছে নিন (JPG/PNG)</div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>ইউজারনেম *</label><input type="text" name="username" id="username-input" required></div>
-          <div class="form-group"><label>পাসওয়ার্ড <span id="password-required-mark">*</span></label><input type="text" name="password" id="password-input"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>নাম *</label><input type="text" name="name" required></div>
-          <div class="form-group"><label>ভূমিকা *</label>
-            <select name="role">
-              <option value="admin">এডমিন (সব করতে পারবে)</option>
-              <option value="moderator">মডারেটর (বুকিং ও খরচ)</option>
-              <option value="host">হোস্ট (বুকিং ও খরচ)</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>মোবাইল নম্বর</label><input type="tel" name="mobile" placeholder="01XXXXXXXXX"></div>
-          <div class="form-group"><label>ইমেইল</label><input type="email" name="email" placeholder="name@example.com"></div>
-        </div>
-        <div class="form-group"><label>ঠিকানা</label><input type="text" name="address" placeholder="বর্তমান ঠিকানা"></div>
-        <div class="form-group" id="active-toggle-group" style="display:none;">
-          <label><input type="checkbox" name="active" id="active-checkbox" checked style="width:auto; display:inline-block; margin-right:6px;"> সক্রিয় (আনচেক করলে লগইন করতে পারবে না)</label>
-        </div>
-        <div class="flex-between">
-          <button type="submit" class="btn btn-primary" id="team-submit-btn">যোগ করুন</button>
-          <button type="button" class="btn btn-outline-forest" id="team-reset-btn" style="display:none;">বাতিল / নতুন ফরম</button>
-        </div>
-      </form>
+    <div class="flex-between"><h2>টিম ব্যবস্থাপনা (এডমিন / মডারেটর / হোস্ট)</h2>
+      <button class="btn btn-primary btn-sm" id="toggle-team-form-btn">➕ নতুন সদস্য যোগ করুন</button>
     </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>ছবি</th><th>ইউজারনেম</th><th>নাম</th><th>ভূমিকা</th><th>মোবাইল</th><th>ইমেইল</th><th>সক্রিয়</th><th></th></tr></thead>
+    <div id="team-form-area" class="mt-24"></div>
+    <div class="table-wrap mt-24"><table>
+      <thead><tr><th>ছবি</th><th>ইউজারনেম</th><th>নাম</th><th>ভূমিকা</th><th>মোবাইল</th><th>ইমেইল</th><th>সক্রিয়</th><th>কার্যক্রম</th></tr></thead>
       <tbody>
         ${admins.map(a => `
           <tr>
             <td>${a.photoUrl ? `<img src="${escapeHtml(a.photoUrl)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">` : '👤'}</td>
             <td>${escapeHtml(a.username)}</td><td>${escapeHtml(a.name)}</td><td>${roleLabel(a.role)}</td>
             <td>${escapeHtml(a.mobile || '')}</td><td>${escapeHtml(a.email || '')}</td><td>${a.active ? '✅' : '❌'}</td>
-            <td>${a.username !== session.username ? `<button class="btn btn-sm btn-danger del-admin-btn" data-username="${a.username}">✕ মুছুন</button>` : '<span class="text-muted">(আপনি)</span>'}</td>
+            <td style="white-space:nowrap;">
+              <button class="btn btn-sm btn-forest edit-admin-btn" data-username="${escapeHtml(a.username)}">✏️ এডিট</button>
+              ${a.username !== session.username ? `<button class="btn btn-sm btn-danger del-admin-btn" data-username="${escapeHtml(a.username)}">✕ মুছুন</button>` : '<span class="text-muted">(আপনি)</span>'}
+            </td>
           </tr>
-        `).join('')}
+        `).join('') || '<tr><td colspan="8" class="text-center text-muted">কোনো সদস্য নেই</td></tr>'}
       </tbody>
     </table></div>
   `;
 
-  qs('#photo-file-input').addEventListener('change', handlePhotoSelect);
-  qs('#team-member-select').addEventListener('change', (e) => loadTeamMemberIntoForm(e.target.value));
-  qs('#team-reset-btn').addEventListener('click', () => { qs('#team-member-select').value = ''; loadTeamMemberIntoForm(''); });
-  qs('#admin-form').addEventListener('submit', submitTeamForm);
-
+  qs('#toggle-team-form-btn').addEventListener('click', () => {
+    if (qs('#team-form-area').innerHTML.trim()) closeTeamForm(); else openTeamForm('');
+  });
+  qsa('.edit-admin-btn').forEach(btn => btn.addEventListener('click', () => openTeamForm(btn.dataset.username)));
   qsa('.del-admin-btn').forEach(btn => btn.addEventListener('click', async () => {
     if (!confirm('এই সদস্যকে মুছে ফেলতে চান?')) return;
     const res = await apiPost('manageAdmin', { mode: 'delete', username: btn.dataset.username });
     if (res.ok) { showToast('মুছে ফেলা হয়েছে', 'success'); renderAdminsTab(); }
   }));
+}
+
+function closeTeamForm() {
+  const area = qs('#team-form-area');
+  if (area) area.innerHTML = '';
+  const btn = qs('#toggle-team-form-btn');
+  if (btn) btn.textContent = '➕ নতুন সদস্য যোগ করুন';
+  selectedPhotoBase64 = null; selectedPhotoMime = null; selectedPhotoName = null;
 }
 
 function handlePhotoSelect(e) {
@@ -928,54 +1071,61 @@ function handlePhotoSelect(e) {
   reader.readAsDataURL(file);
 }
 
-function loadTeamMemberIntoForm(username) {
-  const form = qs('#admin-form');
+function openTeamForm(username) {
+  const area = qs('#team-form-area');
+  const member = username ? teamAdminsCache.find(a => a.username === username) : null;
+  const isEdit = !!member;
+  const m = member || {};
   selectedPhotoBase64 = null; selectedPhotoMime = null; selectedPhotoName = null;
-  qs('#photo-preview').style.display = 'none';
-  qs('#photo-placeholder').style.display = '';
-  qs('#photo-file-input').value = '';
 
-  if (!username) {
-    // নতুন সদস্য মোড
-    qs('#team-form-title').textContent = 'নতুন সদস্য যোগ করুন';
-    qs('#team-submit-btn').textContent = 'যোগ করুন';
-    qs('#team-reset-btn').style.display = 'none';
-    qs('#active-toggle-group').style.display = 'none';
-    qs('#password-required-mark').style.display = '';
-    qs('#password-input').required = true;
-    qs('#username-input').disabled = false;
-    form.reset();
-    form.dataset.mode = 'add';
-    return;
-  }
-
-  const member = teamAdminsCache.find(a => a.username === username);
-  if (!member) return;
-
-  qs('#team-form-title').textContent = 'সদস্য সম্পাদনা করুন — ' + member.name;
-  qs('#team-submit-btn').textContent = 'আপডেট করুন';
-  qs('#team-reset-btn').style.display = '';
-  qs('#active-toggle-group').style.display = '';
-  qs('#password-required-mark').style.display = 'none';
-  qs('#password-input').required = false;
-
-  form.username.value = member.username;
-  qs('#username-input').disabled = true; // ইউজারনেম পরিবর্তনযোগ্য নয়
-  form.password.value = '';
-  form.password.placeholder = 'পরিবর্তন করতে চাইলে নতুন পাসওয়ার্ড লিখুন';
-  form.name.value = member.name || '';
-  form.role.value = member.role || 'host';
-  form.mobile.value = member.mobile || '';
-  form.email.value = member.email || '';
-  form.address.value = member.address || '';
-  qs('#active-checkbox').checked = member.active !== false;
-
-  if (member.photoUrl) {
-    qs('#photo-preview').src = member.photoUrl;
-    qs('#photo-preview').style.display = 'block';
-    qs('#photo-placeholder').style.display = 'none';
-  }
-  form.dataset.mode = 'edit';
+  area.innerHTML = `
+    <div class="form-card" style="max-width:620px;">
+      <h3 style="margin-top:0;">${isEdit ? 'সদস্য সম্পাদনা করুন — ' + escapeHtml(m.name) : 'নতুন সদস্য যোগ করুন'}</h3>
+      <form id="admin-form" data-mode="${isEdit ? 'edit' : 'add'}">
+        <div class="form-group">
+          <label>প্রোফাইল ছবি</label>
+          <div class="photo-box" id="photo-box">
+            <img id="photo-preview" style="display:${m.photoUrl ? 'block' : 'none'};" ${m.photoUrl ? `src="${escapeHtml(m.photoUrl)}"` : ''}>
+            <span id="photo-placeholder" style="display:${m.photoUrl ? 'none' : ''};">📷</span>
+          </div>
+          <input type="file" id="photo-file-input" accept="image/*" style="margin-top:8px;">
+          <div class="hint">সরাসরি কম্পিউটার/মোবাইল থেকে ছবি বেছে নিন (JPG/PNG)</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>ইউজারনেম *</label><input type="text" name="username" id="username-input" required value="${escapeHtml(m.username || '')}" ${isEdit ? 'readonly style="opacity:0.7;"' : ''}></div>
+          <div class="form-group"><label>পাসওয়ার্ড ${isEdit ? '' : '*'}</label><input type="text" name="password" id="password-input" ${isEdit ? 'placeholder="পরিবর্তন করতে চাইলে নতুন পাসওয়ার্ড লিখুন"' : 'required'}></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>নাম *</label><input type="text" name="name" required value="${escapeHtml(m.name || '')}"></div>
+          <div class="form-group"><label>ভূমিকা *</label>
+            <select name="role">
+              <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>এডমিন (সব করতে পারবে)</option>
+              <option value="moderator" ${m.role === 'moderator' ? 'selected' : ''}>মডারেটর (বুকিং ও খরচ)</option>
+              <option value="host" ${(!m.role || m.role === 'host') ? 'selected' : ''}>হোস্ট (বুকিং ও খরচ)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>মোবাইল নম্বর</label><input type="tel" name="mobile" placeholder="01XXXXXXXXX" value="${escapeHtml(m.mobile || '')}"></div>
+          <div class="form-group"><label>ইমেইল</label><input type="email" name="email" placeholder="name@example.com" value="${escapeHtml(m.email || '')}"></div>
+        </div>
+        <div class="form-group"><label>ঠিকানা</label><input type="text" name="address" placeholder="বর্তমান ঠিকানা" value="${escapeHtml(m.address || '')}"></div>
+        ${isEdit ? `<div class="form-group">
+          <label><input type="checkbox" name="active" id="active-checkbox" ${m.active !== false ? 'checked' : ''} style="width:auto; display:inline-block; margin-right:6px;"> সক্রিয় (আনচেক করলে লগইন করতে পারবে না)</label>
+        </div>` : ''}
+        <div class="flex-between">
+          <button type="submit" class="btn btn-primary" id="team-submit-btn">${isEdit ? 'আপডেট করুন' : 'যোগ করুন'}</button>
+          <button type="button" class="btn btn-outline-forest" id="team-reset-btn">বাতিল</button>
+        </div>
+      </form>
+    </div>
+  `;
+  const toggleBtn = qs('#toggle-team-form-btn');
+  if (toggleBtn) toggleBtn.textContent = '✕ ফরম বন্ধ করুন';
+  qs('#photo-file-input').addEventListener('change', handlePhotoSelect);
+  qs('#team-reset-btn').addEventListener('click', closeTeamForm);
+  qs('#admin-form').addEventListener('submit', submitTeamForm);
+  area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function submitTeamForm(e) {
@@ -1013,6 +1163,186 @@ async function submitTeamForm(e) {
   } catch (err) {
     showToast('ত্রুটি: ' + err.message, 'error');
     btn.disabled = false; btn.textContent = mode === 'edit' ? 'আপডেট করুন' : 'যোগ করুন';
+  }
+}
+
+// ============================================================
+// ৭. ব্যবস্থাপনা (ওয়েবসাইট সেটিংস)
+// ============================================================
+
+let settingsImages = { logo: null, hero: null, clearLogo: false, clearHero: false };
+
+function resizeImageFile(file, maxSize, asPng) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!asPng) { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h); }
+        ctx.drawImage(img, 0, 0, w, h);
+        const mime = asPng ? 'image/png' : 'image/jpeg';
+        const dataUrl = canvas.toDataURL(mime, 0.85);
+        resolve({
+          dataUrl, base64: dataUrl.split(',')[1], mime,
+          name: (file.name.replace(/\.[^.]+$/, '') || 'image') + (asPng ? '.png' : '.jpg')
+        });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function renderSettingsTab() {
+  const session = Session.get();
+  if (session.role !== 'admin') { qs('#admin-main').innerHTML = '<div class="empty-state">এই পাতা শুধু এডমিনের জন্য।</div>'; return; }
+
+  const main = qs('#admin-main');
+  const res = await apiGet('getSettings', null, { noCache: true });
+  const s = res.ok ? res.data : {};
+  const phones = SITE_CONFIG.mobiles || [];
+  const val = (key, fallback) => escapeHtml(s[key] !== undefined ? s[key] : (fallback || ''));
+  settingsImages = { logo: null, hero: null, clearLogo: false, clearHero: false };
+  const logoUrl = s.logoUrl !== undefined ? s.logoUrl : SITE_CONFIG.logoUrl;
+  const heroUrl = s.heroImageUrl !== undefined ? s.heroImageUrl : SITE_CONFIG.heroImageUrl;
+
+  main.innerHTML = `
+    <h2>ব্যবস্থাপনা — ওয়েবসাইট তথ্য</h2>
+    <p class="text-muted">এখানে যা সংরক্ষণ করবেন তা পুরো ওয়েবসাইটে (হেডার, ফুটার, টিকেট, প্রিন্ট ইত্যাদি) স্বয়ংক্রিয়ভাবে বসে যাবে।</p>
+    <div class="form-card" style="max-width:720px;">
+      <form id="settings-form">
+        <fieldset>
+          <legend>🏷️ ওয়েবসাইটের পরিচয়</legend>
+          <div class="form-row">
+            <div class="form-group"><label>ওয়েবসাইটের নাম (বাংলা) *</label><input type="text" name="siteNameBn" required value="${val('siteNameBn', SITE_CONFIG.groupNameBn)}"></div>
+            <div class="form-group"><label>ওয়েবসাইটের নাম (ইংরেজি) *</label><input type="text" name="siteNameEn" required value="${val('siteNameEn', SITE_CONFIG.groupNameEn)}"></div>
+          </div>
+          <div class="form-group"><label>ট্যাগলাইন</label><input type="text" name="tagline" value="${val('tagline', SITE_CONFIG.tagline)}"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>📞 যোগাযোগ</legend>
+          <div class="form-group"><label>ঠিকানা</label><input type="text" name="address" value="${val('address', SITE_CONFIG.address)}"></div>
+          <div class="form-row">
+            <div class="form-group"><label>মোবাইল নং ১</label><input type="tel" name="mobile1" placeholder="01XXXXXXXXX" value="${val('mobile1', phones[0])}"></div>
+            <div class="form-group"><label>মোবাইল নং ২</label><input type="tel" name="mobile2" placeholder="01XXXXXXXXX" value="${val('mobile2', phones[1])}"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>মোবাইল নং ৩</label><input type="tel" name="mobile3" placeholder="01XXXXXXXXX" value="${val('mobile3', phones[2])}"></div>
+            <div class="form-group"><label>ইমেইল</label><input type="email" name="email" placeholder="name@example.com" value="${val('email', SITE_CONFIG.email)}"></div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>🖼️ লোগো ও হিরো ছবি</legend>
+          <div class="form-group">
+            <label>লোগো</label>
+            <div class="photo-box" id="st-logo-box">
+              <img id="st-logo-preview" style="display:${logoUrl ? 'block' : 'none'};" ${logoUrl ? `src="${escapeHtml(logoUrl)}"` : ''}>
+              <span id="st-logo-placeholder" style="display:${logoUrl ? 'none' : ''};">🧳</span>
+            </div>
+            <input type="file" id="st-logo-input" accept="image/*" style="margin-top:8px;">
+            <div class="hint">স্কয়ার (চতুর্ভুজ) ছবি ভালো দেখায়। PNG/JPG।</div>
+          </div>
+          <div class="form-group">
+            <label>হোমপেজ হিরো সেকশনের ছবি</label>
+            <div class="hero-preview" id="st-hero-box">
+              <img id="st-hero-preview" style="display:${heroUrl ? 'block' : 'none'};" ${heroUrl ? `src="${escapeHtml(heroUrl)}"` : ''}>
+              <span id="st-hero-placeholder" style="display:${heroUrl ? 'none' : ''};">কোনো ছবি নেই</span>
+            </div>
+            <input type="file" id="st-hero-input" accept="image/*" style="margin-top:8px;">
+            <button type="button" class="btn btn-sm btn-outline-forest" id="st-hero-clear" style="margin-top:8px;">ছবি সরান</button>
+            <div class="hint">চওড়া (ল্যান্ডস্কেপ) ছবি দিন। ছবির উপর হালকা গাঢ় আস্তরণ থাকবে যাতে লেখা পড়া যায়।</div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>🔗 সোশ্যাল মিডিয়া লিংক</legend>
+          <div class="form-row">
+            <div class="form-group"><label>Facebook</label><input type="url" name="facebookUrl" placeholder="https://..." value="${val('facebookUrl', SITE_CONFIG.facebookUrl)}"></div>
+            <div class="form-group"><label>YouTube</label><input type="url" name="youtubeUrl" placeholder="https://..." value="${val('youtubeUrl', SITE_CONFIG.youtubeUrl)}"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>Instagram</label><input type="url" name="instagramUrl" placeholder="https://..." value="${val('instagramUrl', SITE_CONFIG.instagramUrl)}"></div>
+            <div class="form-group"><label>TikTok</label><input type="url" name="tiktokUrl" placeholder="https://..." value="${val('tiktokUrl', SITE_CONFIG.tiktokUrl)}"></div>
+          </div>
+        </fieldset>
+
+        <button type="submit" class="btn btn-primary btn-block" id="settings-submit-btn">সংরক্ষণ করুন</button>
+      </form>
+    </div>
+  `;
+
+  qs('#st-logo-input').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    try {
+      settingsImages.logo = await resizeImageFile(file, 512, true);
+      settingsImages.clearLogo = false;
+      qs('#st-logo-preview').src = settingsImages.logo.dataUrl;
+      qs('#st-logo-preview').style.display = 'block';
+      qs('#st-logo-placeholder').style.display = 'none';
+    } catch (err) { showToast('ছবি পড়তে সমস্যা হয়েছে', 'error'); }
+  });
+  qs('#st-hero-input').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    try {
+      settingsImages.hero = await resizeImageFile(file, 1600, false);
+      settingsImages.clearHero = false;
+      qs('#st-hero-preview').src = settingsImages.hero.dataUrl;
+      qs('#st-hero-preview').style.display = 'block';
+      qs('#st-hero-placeholder').style.display = 'none';
+    } catch (err) { showToast('ছবি পড়তে সমস্যা হয়েছে', 'error'); }
+  });
+  qs('#st-hero-clear').addEventListener('click', () => {
+    settingsImages.hero = null; settingsImages.clearHero = true;
+    qs('#st-hero-input').value = '';
+    qs('#st-hero-preview').style.display = 'none';
+    qs('#st-hero-placeholder').style.display = '';
+  });
+  qs('#settings-form').addEventListener('submit', submitSettings);
+}
+
+async function submitSettings(e) {
+  e.preventDefault();
+  const btn = qs('#settings-submit-btn');
+  btn.disabled = true; btn.textContent = 'সংরক্ষণ হচ্ছে...';
+  const fd = new FormData(e.target);
+  const settings = {};
+  ['siteNameBn','siteNameEn','tagline','address','mobile1','mobile2','mobile3','email','facebookUrl','youtubeUrl','instagramUrl','tiktokUrl']
+    .forEach(k => { settings[k] = (fd.get(k) || '').toString().trim(); });
+  if (settingsImages.clearHero) settings.heroImageUrl = '';
+
+  const payload = { values: settings };
+  if (settingsImages.logo) {
+    payload.logoBase64 = settingsImages.logo.base64;
+    payload.logoMimeType = settingsImages.logo.mime;
+    payload.logoFileName = settingsImages.logo.name;
+  }
+  if (settingsImages.hero) {
+    payload.heroBase64 = settingsImages.hero.base64;
+    payload.heroMimeType = settingsImages.hero.mime;
+    payload.heroFileName = settingsImages.hero.name;
+  }
+
+  try {
+    const res = await apiPost('saveSettings', payload);
+    if (!res.ok) throw new Error(res.error || 'ব্যর্থ হয়েছে');
+    try { localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(res.data)); } catch (e) {}
+    if (settingsImages.clearHero) SITE_CONFIG.heroImageUrl = '';
+    applySettings(res.data);
+    renderAllSiteInfo();
+    showToast('ওয়েবসাইটের তথ্য সংরক্ষিত হয়েছে', 'success');
+    renderSettingsTab();
+  } catch (err) {
+    showToast('ত্রুটি: ' + err.message, 'error');
+    btn.disabled = false; btn.textContent = 'সংরক্ষণ করুন';
   }
 }
 

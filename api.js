@@ -3,6 +3,7 @@
 // ============================================================
 
 const _cache = new Map();
+const _inflight = new Map();
 const CACHE_TTL_MS = 20000; // ২০ সেকেন্ড ক্যাশ - বারবার একই ডেটা আনতে দেরি হবে না
 
 async function apiGet(action, params, opts) {
@@ -21,10 +22,34 @@ async function apiGet(action, params, opts) {
     if (Date.now() - cached.time < CACHE_TTL_MS) return cached.data;
   }
 
-  const res = await fetch(cacheKey);
-  const data = await res.json();
-  if (useCache) _cache.set(cacheKey, { data, time: Date.now() });
-  return data;
+  // একই সময়ে একই রিকোয়েস্ট দুইবার গেলে একটিই পাঠানো হবে
+  if (_inflight.has(cacheKey)) return _inflight.get(cacheKey);
+  const p = (async () => {
+    const res = await fetch(cacheKey);
+    const data = await res.json();
+    if (useCache) _cache.set(cacheKey, { data, time: Date.now() });
+    return data;
+  })();
+  _inflight.set(cacheKey, p);
+  p.then(() => _inflight.delete(cacheKey), () => _inflight.delete(cacheKey));
+  return p;
+}
+
+// আগের সেভ করা উত্তর সাথে সাথে দেখায় (onData(res, true)), তারপর নতুন ডেটা এনে আবার দেখায় (onData(res, false))
+async function apiGetSWR(action, params, onData) {
+  const lsKey = 'swr_' + action + '_' + JSON.stringify(params || {});
+  let hadCache = false;
+  try {
+    const c = localStorage.getItem(lsKey);
+    if (c) { onData(JSON.parse(c), true); hadCache = true; }
+  } catch (e) {}
+  try {
+    const res = await apiGet(action, params, { noCache: true });
+    if (res && res.ok) { try { localStorage.setItem(lsKey, JSON.stringify(res)); } catch (e) {} }
+    if (res && (res.ok || !hadCache)) onData(res, false);
+  } catch (err) {
+    if (!hadCache) throw err;
+  }
 }
 
 async function apiPost(action, body) {
@@ -125,7 +150,8 @@ function renderSiteHeaderFooter() {
     const links = [
       { url: SITE_CONFIG.facebookUrl, label: '📘 Facebook' },
       { url: SITE_CONFIG.youtubeUrl, label: '▶️ YouTube' },
-      { url: SITE_CONFIG.instagramUrl, label: '📷 Instagram' }
+      { url: SITE_CONFIG.instagramUrl, label: '📷 Instagram' },
+      { url: SITE_CONFIG.tiktokUrl, label: '🎵 TikTok' }
     ];
     links.forEach(l => {
       if (l.url) {
@@ -137,16 +163,86 @@ function renderSiteHeaderFooter() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+// ---------- ব্যবস্থাপনা মেনুর সেটিংস (Google Sheet থেকে) ----------
+
+const SETTINGS_CACHE_KEY = 'tour_site_settings';
+const SETTING_FIELDS = [
+  'siteNameBn', 'siteNameEn', 'tagline', 'address',
+  'mobile1', 'mobile2', 'mobile3', 'email',
+  'logoUrl', 'heroImageUrl',
+  'facebookUrl', 'youtubeUrl', 'instagramUrl', 'tiktokUrl'
+];
+
+function applySettings(s) {
+  if (!s) return;
+  if (s.siteNameBn) SITE_CONFIG.groupNameBn = s.siteNameBn;
+  if (s.siteNameEn) SITE_CONFIG.groupNameEn = s.siteNameEn;
+  if (s.tagline) SITE_CONFIG.tagline = s.tagline;
+  if (s.logoUrl) SITE_CONFIG.logoUrl = s.logoUrl;
+  if (s.heroImageUrl) SITE_CONFIG.heroImageUrl = s.heroImageUrl;
+  SITE_CONFIG.address = s.address || SITE_CONFIG.address || '';
+  SITE_CONFIG.email = s.email || SITE_CONFIG.email || '';
+  SITE_CONFIG.mobiles = [s.mobile1, s.mobile2, s.mobile3].filter(Boolean);
+  if (s.facebookUrl !== undefined) SITE_CONFIG.facebookUrl = s.facebookUrl;
+  if (s.youtubeUrl !== undefined) SITE_CONFIG.youtubeUrl = s.youtubeUrl;
+  if (s.instagramUrl !== undefined) SITE_CONFIG.instagramUrl = s.instagramUrl;
+  if (s.tiktokUrl !== undefined) SITE_CONFIG.tiktokUrl = s.tiktokUrl;
+}
+
+function renderSiteContactInfo() {
+  qsa('.js-site-contact').forEach(el => {
+    const parts = [];
+    if (SITE_CONFIG.address) parts.push(`<div>📍 ${escapeHtml(SITE_CONFIG.address)}</div>`);
+    (SITE_CONFIG.mobiles || []).forEach(m => parts.push(`<div>📞 <a href="tel:${escapeHtml(m)}">${escapeHtml(m)}</a></div>`));
+    if (SITE_CONFIG.email) parts.push(`<div>✉️ <a href="mailto:${escapeHtml(SITE_CONFIG.email)}">${escapeHtml(SITE_CONFIG.email)}</a></div>`);
+    el.innerHTML = parts.join('');
+  });
+}
+
+function renderHeroImage() {
+  const hero = qs('.hero');
+  if (!hero || !SITE_CONFIG.heroImageUrl) return;
+  hero.style.backgroundImage =
+    `linear-gradient(180deg, rgba(15,42,31,0.78), rgba(27,67,50,0.88)), url("${SITE_CONFIG.heroImageUrl}")`;
+  hero.style.backgroundSize = 'cover';
+  hero.style.backgroundPosition = 'center';
+}
+
+function renderAllSiteInfo() {
   renderSiteHeaderFooter();
   renderBrandLogos();
+  renderSiteContactInfo();
+  renderHeroImage();
+}
+
+async function loadSiteSettings() {
+  // আগের সেভ করা সেটিংস দিয়ে সাথে সাথে দেখানো, তারপর নতুন ডেটা এনে আপডেট
+  try {
+    const cached = localStorage.getItem(SETTINGS_CACHE_KEY);
+    if (cached) { applySettings(JSON.parse(cached)); renderAllSiteInfo(); }
+  } catch (e) {}
+  // হোমপেজ নিজেই getBootstrap থেকে সেটিংস আনে, আলাদা কল লাগবে না
+  if (typeof SETTINGS_FROM_BOOTSTRAP !== 'undefined') return;
+  try {
+    const res = await apiGet('getSettings', null, { noCache: true });
+    if (res && res.ok && res.data) {
+      applySettings(res.data);
+      try { localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(res.data)); } catch (e) {}
+      renderAllSiteInfo();
+    }
+  } catch (e) {}
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderAllSiteInfo();
   setupHamburgerMenu();
+  loadSiteSettings();
 });
 
 function renderBrandLogos() {
   if (!SITE_CONFIG.logoUrl) return;
   qsa('.brand-mark').forEach(el => {
-    el.innerHTML = `<img src="${SITE_CONFIG.logoUrl}" alt="logo">`;
+    el.innerHTML = `<img src="${escapeHtml(SITE_CONFIG.logoUrl)}" alt="logo">`;
   });
 }
 

@@ -18,6 +18,13 @@ const SITE_CONFIG = {
   facebookUrl: 'https://web.facebook.com/abdul.momen.111408',
   youtubeUrl: '',
   instagramUrl: '',
+  tiktokUrl: '',
+
+  // ঠিকানা, ইমেইল, মোবাইল (সর্বোচ্চ ৩টি), হিরো ছবি - এডমিন প্যানেলের "ব্যবস্থাপনা" মেনু থেকে সেট হয়
+  address: '',
+  email: '',
+  mobiles: [],
+  heroImageUrl: '',
 
   whatsappNumber: '01794709881',
   phone: '01853302933',

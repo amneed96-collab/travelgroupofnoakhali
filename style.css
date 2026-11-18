@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap');
 
 :root {
   /* রং প্যালেট */
@@ -821,3 +820,34 @@ tbody tr:hover { background: var(--cream); }
 }
 .print-sheet-header h2 { margin: 0 0 4px; }
 .print-sheet-header .admin-line { font-size: 0.85rem; color: var(--ink-soft); }
+
+/* ---------- ফুটার যোগাযোগ তথ্য ---------- */
+.footer-site-contact { font-size: 0.85rem; line-height: 1.7; }
+.footer-site-contact a { color: var(--gold-light); }
+
+/* ---------- রিপোর্ট ---------- */
+.report-filter { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0 8px; }
+.report-filter .form-group { margin: 0; min-width: 160px; }
+.report-filter select {
+  width: 100%; padding: 11px 14px; border: 1.5px solid var(--border);
+  border-radius: 9px; background: var(--cream); color: var(--ink);
+}
+.report-totals-wrap { display: flex; justify-content: flex-end; margin-top: 20px; }
+.report-totals {
+  width: 100%; max-width: 340px; background: white; border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 8px 18px;
+}
+.rt-row { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px dashed var(--border); }
+.rt-row:last-child { border-bottom: none; }
+.rt-row strong { font-family: var(--font-display); font-size: 1.1rem; }
+.rt-result.profit span, .rt-result.profit strong { color: var(--forest); font-weight: 700; }
+.rt-result.loss span, .rt-result.loss strong { color: var(--red); font-weight: 700; }
+
+/* ---------- ব্যবস্থাপনা: হিরো ছবি প্রিভিউ ---------- */
+.hero-preview {
+  width: 100%; max-width: 420px; aspect-ratio: 16 / 7; border-radius: 10px;
+  background: var(--cream-dark); border: 2px dashed var(--border);
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+  color: var(--ink-soft); font-size: 0.85rem;
+}
+.hero-preview img { width: 100%; height: 100%; object-fit: cover; }

@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>যোগাযোগ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -43,6 +46,7 @@
       <div>
         <div class="footer-col-title">সামাজিক মাধ্যম</div>
         <div class="js-social-links"></div>
+        <div class="js-site-contact footer-site-contact"></div>
       </div>
       <div>
         <div class="footer-col-title">এডমিনদের সাথে যোগাযোগ</div>
@@ -69,25 +73,19 @@
 <script>
 qs('#year').textContent = new Date().getFullYear();
 
-async function loadFooterAdmins() {
-  try {
-    const res = await apiGet('getTeamContacts');
-    if (!res.ok) return;
-    const admins = res.data.filter(a => a.role === 'admin');
-    const container = qs('#footer-admin-contacts');
-    container.innerHTML = admins.map(a => `
-      <div class="footer-admin-card">
-        ${a.photoUrl ? `<img class="footer-admin-photo" src="${escapeHtml(a.photoUrl)}" alt="${escapeHtml(a.name)}">` : '<div class="footer-admin-photo"></div>'}
-        <div class="footer-admin-info">
-          <div class="name">${escapeHtml(a.name)}</div>
-          ${a.mobile ? `<div>📞 ${escapeHtml(a.mobile)}</div>` : ''}
-          ${a.email ? `<div>✉️ ${escapeHtml(a.email)}</div>` : ''}
-        </div>
+function renderFooterAdmins(people) {
+  const admins = (people || []).filter(a => a.role === 'admin');
+  qs('#footer-admin-contacts').innerHTML = admins.map(a => `
+    <div class="footer-admin-card">
+      ${a.photoUrl ? `<img class="footer-admin-photo" src="${escapeHtml(a.photoUrl)}" alt="${escapeHtml(a.name)}">` : '<div class="footer-admin-photo"></div>'}
+      <div class="footer-admin-info">
+        <div class="name">${escapeHtml(a.name)}</div>
+        ${a.mobile ? `<div>📞 ${escapeHtml(a.mobile)}</div>` : ''}
+        ${a.email ? `<div>✉️ ${escapeHtml(a.email)}</div>` : ''}
       </div>
-    `).join('') || '<span class="text-muted">তথ্য পাওয়া যায়নি</span>';
-  } catch (err) {}
+    </div>
+  `).join('') || '<span class="text-muted">তথ্য পাওয়া যায়নি</span>';
 }
-loadFooterAdmins();
 
 const ROLE_ORDER = ['admin', 'moderator', 'host'];
 const ROLE_TITLES = { admin: '১. এডমিন', moderator: '২. মডারেটর', host: '৩. হোস্ট' };
@@ -97,13 +95,13 @@ const ROLE_DESC = {
   host: 'বুকিং ব্যবস্থাপনা ও খরচ এন্ট্রির দায়িত্বে'
 };
 
-async function loadContacts() {
+function loadContacts() {
   const container = qs('#contact-groups');
-  try {
-    const res = await apiGet('getTeamContacts', null, { noCache: true });
+  // একটাই কল: পেজ ও ফুটার দুটোই এই ডেটা থেকে। আগের ডেটা সাথে সাথে দেখায়, পরে নতুন ডেটা বসায়।
+  apiGetSWR('getTeamContacts', null, (res) => {
     if (!res.ok) throw new Error(res.error);
     const people = res.data;
-
+    renderFooterAdmins(people);
     container.innerHTML = ROLE_ORDER.map(role => {
       const group = people.filter(p => p.role === role);
       if (group.length === 0) return '';
@@ -116,9 +114,9 @@ async function loadContacts() {
         </div>
       `;
     }).join('') || '<div class="empty-state">কোনো তথ্য পাওয়া যায়নি</div>';
-  } catch (err) {
+  }).catch(err => {
     container.innerHTML = '<div class="empty-state">লোড করতে সমস্যা হয়েছে: ' + err.message + '</div>';
-  }
+  });
 }
 
 function renderContactCard(p) {
