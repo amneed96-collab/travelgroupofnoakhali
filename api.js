@@ -203,7 +203,7 @@ function renderHeroImage() {
   const hero = qs('.hero');
   if (!hero || !SITE_CONFIG.heroImageUrl) return;
   hero.style.backgroundImage =
-    `linear-gradient(180deg, rgba(15,42,31,0.78), rgba(27,67,50,0.88)), url("${SITE_CONFIG.heroImageUrl}")`;
+    `linear-gradient(180deg, rgba(37,116,84,0.72), rgba(37,116,84,0.84)), url("${SITE_CONFIG.heroImageUrl}")`;
   hero.style.backgroundSize = 'cover';
   hero.style.backgroundPosition = 'center';
 }

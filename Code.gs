@@ -964,8 +964,13 @@ function getOverallReport(mode, year, month) {
 }
 
 // ---------- Drive অনুমতি (একবার Run করুন) ----------
-// ছবি আপলোডের জন্য Google Drive ব্যবহারের অনুমতি দিতে এই ফাংশনটি একবার Run করুন, তারপর নতুন ভার্সন Deploy করুন।
+// ছবি আপলোডের জন্য Drive-এর পূর্ণ অনুমতি (ফোল্ডার ও ফাইল তৈরি) লাগে।
+// এই ফাংশনটি একবার Run করে অনুমতি দিন, তারপর নতুন ভার্সন Deploy করুন।
 function authorizeDrive() {
-  DriveApp.getRootFolder();
+  const names = ['TourAppProfilePhotos'];
+  names.forEach(n => {
+    const it = DriveApp.getFoldersByName(n);
+    if (!it.hasNext()) DriveApp.createFolder(n);
+  });
   return 'Drive অনুমতি দেওয়া হয়েছে';
 }

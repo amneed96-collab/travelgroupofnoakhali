@@ -9,7 +9,6 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbzai1VLFxw9PpcGRfsRbFu5EkFsLrjmyTLi0k0dt4YMHpdjgJV2V1xwKHMYi-uPvL5e/exec';
 
-
 const SITE_CONFIG = {
   groupNameBn: 'ট্রাভেল গ্রুপ অফ নোয়াখালী',
   groupNameEn: 'Travel Group of Noakhali',

@@ -1,25 +1,25 @@
 
 :root {
   /* রং প্যালেট */
-  --forest: #1B4332;
-  --forest-dark: #0F2A1F;
-  --forest-light: #2D6A4F;
-  --gold: #D4A24C;
-  --gold-light: #E8C27E;
-  --cream: #FBF8F1;
-  --cream-dark: #F2EBDA;
+  --forest: #257454;
+  --forest-dark: #257454;
+  --forest-light: #1e6046;
+  --gold: #e99505;
+  --gold-light: #f6b238;
+  --cream: #ffffff;
+  --cream-dark: #eef5f1;
   --ink: #1A1A2E;
   --ink-soft: #4A4A5E;
   --red: #B3413B;
-  --border: #E4DCC8;
+  --border: #d3e5dc;
 
   /* টাইপ */
   --font-display: 'Baloo Da 2', 'Hind Siliguri', sans-serif;
   --font-body: 'Hind Siliguri', sans-serif;
 
   --radius: 14px;
-  --shadow: 0 4px 20px rgba(15, 42, 31, 0.08);
-  --shadow-lg: 0 12px 40px rgba(15, 42, 31, 0.14);
+  --shadow: 0 4px 20px rgba(37, 116, 84, 0.08);
+  --shadow-lg: 0 12px 40px rgba(37, 116, 84, 0.14);
 }
 
 * { box-sizing: border-box; }
@@ -60,7 +60,7 @@ button, input, select, textarea {
 
 .top-strip {
   background: var(--gold);
-  color: var(--forest-dark);
+  color: #ffffff;
   font-weight: 700;
   font-size: 0.85rem;
   padding: 7px 0;
@@ -68,7 +68,7 @@ button, input, select, textarea {
 }
 
 .site-header {
-  background: var(--forest-dark);
+  background: #257454;
   color: var(--cream);
   padding: 18px 0;
   position: sticky;
@@ -101,7 +101,7 @@ button, input, select, textarea {
   width: 45px;
   height: 45px;
   border-radius: 50%;
-  background: #E4DCC8;
+  background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -186,7 +186,7 @@ button, input, select, textarea {
 
 .hero {
   background:
-    radial-gradient(ellipse at top right, rgba(212, 162, 76, 0.18), transparent 55%),
+    radial-gradient(ellipse at top right, rgba(233, 149, 5, 0.18), transparent 55%),
     linear-gradient(180deg, var(--forest-dark), var(--forest));
   color: var(--cream);
   padding: 72px 0 90px;
@@ -219,8 +219,8 @@ button, input, select, textarea {
 
 .eyebrow {
   display: inline-block;
-  background: rgba(212, 162, 76, 0.16);
-  border: 1px solid rgba(212, 162, 76, 0.4);
+  background: rgba(233, 149, 5, 0.16);
+  border: 1px solid rgba(233, 149, 5, 0.4);
   color: var(--gold-light);
   padding: 6px 16px;
   border-radius: 999px;
@@ -237,7 +237,7 @@ button, input, select, textarea {
 }
 .pkg-count-item {
   background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(212,162,76,0.35);
+  border: 1px solid rgba(233,149,5,0.35);
   color: var(--cream);
   padding: 10px 18px;
   border-radius: 10px;
@@ -270,10 +270,10 @@ button, input, select, textarea {
 
 .btn-primary {
   background: var(--gold);
-  color: var(--forest-dark);
-  box-shadow: 0 6px 18px rgba(212, 162, 76, 0.35);
+  color: #ffffff;
+  box-shadow: 0 6px 18px rgba(233, 149, 5, 0.35);
 }
-.btn-primary:hover { background: var(--gold-light); }
+.btn-primary:hover { background: #cf8504; }
 
 .btn-outline {
   background: transparent;
@@ -373,7 +373,7 @@ button, input, select, textarea {
 
 .pkg-seats-left {
   font-size: 0.85rem;
-  color: var(--gold, #B3812F);
+  color: var(--gold);
   font-weight: 600;
 }
 
@@ -524,7 +524,7 @@ legend {
   cursor: not-allowed;
 }
 .seat-held {
-  background: #C9A15A;
+  background: #e99505;
   color: white;
   opacity: 0.8;
   cursor: not-allowed;
@@ -543,7 +543,7 @@ legend {
 .legend-dot.available { background: var(--cream); }
 .legend-dot.selected { background: var(--forest); }
 .legend-dot.booked { background: var(--red); }
-.legend-dot.held { background: #C9A15A; }
+.legend-dot.held { background: #e99505; }
 
 /* ---------- টেবিল ---------- */
 
@@ -560,8 +560,8 @@ tbody tr:hover { background: var(--cream); }
   font-weight: 700;
   display: inline-block;
 }
-.status-pending { background: #FCEFCB; color: #8A6D1D; }
-.status-confirmed { background: #D8F0DE; color: #1B4332; }
+.status-pending { background: #fdecc8; color: #9a5f00; }
+.status-confirmed { background: #dcefe6; color: #257454; }
 .status-cancelled { background: #F6D9D6; color: #8A2E28; }
 
 /* ---------- স্ট্যাট কার্ড ---------- */
@@ -624,7 +624,7 @@ tbody tr:hover { background: var(--cream); }
 /* ---------- মোডাল ---------- */
 
 .modal-overlay {
-  position: fixed; inset: 0; background: rgba(15,42,31,0.55);
+  position: fixed; inset: 0; background: rgba(37,116,84,0.55);
   display: flex; align-items: center; justify-content: center;
   z-index: 200; padding: 20px;
 }
@@ -650,8 +650,8 @@ tbody tr:hover { background: var(--cream); }
 /* ---------- ফুটার ---------- */
 
 .site-footer {
-  background: var(--forest-dark);
-  color: var(--gold-light);
+  background: #257454;
+  color: #ffffff;
   padding: 40px 0 20px;
   font-size: 0.9rem;
 }

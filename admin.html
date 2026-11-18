@@ -888,7 +888,7 @@ async function printPackageDetail(packageId, spotName) {
   const due = bookings.reduce((s, b) => s + (Number(b.dueAmount) || 0), 0);
   const expense = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
   const net = income - expense;
-  const color = net >= 0 ? '#1B4332' : '#B3413B';
+  const color = net >= 0 ? '#257454' : '#B3413B';
   const methodLabel = { bkash: 'বিকাশ', nagad: 'নগদ', cash: 'হাতে হাতে' };
   const seatText = b => (b.seats || []).map(s => s.vehicleName + '-' + s.seatNo).join(', ');
   const incomeRows = bookings.filter(b => Number(b.paidAmount) > 0);
@@ -906,7 +906,7 @@ async function printPackageDetail(packageId, spotName) {
       td.num, th.num { text-align:right !important; }
       .totals-wrap { display:flex; justify-content:flex-end; margin-top:24px; }
       table.totals { border-collapse:collapse; min-width:300px; font-size:15px; }
-      table.totals td { border:1px solid #1B4332; padding:8px 14px; }
+      table.totals td { border:1px solid #257454; padding:8px 14px; }
       table.totals td:last-child { text-align:right; font-weight:bold; }
       .print-footer { margin-top: 30px; text-align:center; font-size: 11px; color: #999; }
     </style></head><body>
@@ -952,7 +952,7 @@ function printReport(overall, singlePkg, filter) {
   const rows = singlePkg ? [singlePkg] : overall.perPackage;
   const title = reportTitle(filter) + (singlePkg ? ' (' + singlePkg.spotName + ')' : '');
   const t = totalsOf(overall, singlePkg);
-  const color = (n) => n >= 0 ? '#1B4332' : '#B3413B';
+  const color = (n) => n >= 0 ? '#257454' : '#B3413B';
 
   win.document.write(`
     <html><head><meta charset="UTF-8"><title>${escapeHtml(title)}</title>
@@ -965,7 +965,7 @@ function printReport(overall, singlePkg, filter) {
       table.main th { background:#eee; }
       .totals-wrap { display:flex; justify-content:flex-end; margin-top:20px; }
       table.totals { border-collapse:collapse; min-width:300px; font-size:15px; }
-      table.totals td { border:1px solid #1B4332; padding:8px 14px; }
+      table.totals td { border:1px solid #257454; padding:8px 14px; }
       table.totals td:last-child { text-align:right; font-weight:bold; }
       .print-footer { margin-top: 30px; text-align:center; font-size: 11px; color: #999; }
     </style></head>
