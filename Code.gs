@@ -962,3 +962,10 @@ function getOverallReport(mode, year, month) {
     perPackage
   };
 }
+
+// ---------- Drive অনুমতি (একবার Run করুন) ----------
+// ছবি আপলোডের জন্য Google Drive ব্যবহারের অনুমতি দিতে এই ফাংশনটি একবার Run করুন, তারপর নতুন ভার্সন Deploy করুন।
+function authorizeDrive() {
+  DriveApp.getRootFolder();
+  return 'Drive অনুমতি দেওয়া হয়েছে';
+}
