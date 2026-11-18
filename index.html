@@ -18,12 +18,6 @@
 </head>
 <body>
 
-<div class="top-strip">
-  <div class="container flex-between">
-    <span class="js-header-admin-line">এডমিন- রবিউল হক ওয়াসিম: 01648-093805</span>
-  </div>
-</div>
-
 <header class="site-header">
   <div class="container">
     <div class="brand">
@@ -82,8 +76,8 @@
       <div>
         <div class="footer-col-title">লিংক</div>
         <div style="display:flex; flex-direction:column; gap:8px;">
-          <a href="contact.html" style="color:var(--cream); opacity:0.85;">যোগাযোগ পেজ</a>
-          <a href="ticket.html" style="color:var(--cream); opacity:0.85;">টিকেট দেখুন</a>
+          <a href="contact.html" style="color:#590303;">যোগাযোগ পেজ</a>
+          <a href="ticket.html" style="color:#590303;">টিকেট দেখুন</a>
         </div>
       </div>
     </div>
@@ -105,7 +99,6 @@ function renderFooterAdmins(people) {
   const admins = (people || []).filter(a => a.role === 'admin');
   qs('#footer-admin-contacts').innerHTML = admins.map(a => `
     <div class="footer-admin-card">
-      ${a.photoUrl ? `<img class="footer-admin-photo" src="${escapeHtml(a.photoUrl)}" alt="${escapeHtml(a.name)}">` : '<div class="footer-admin-photo"></div>'}
       <div class="footer-admin-info">
         <div class="name">${escapeHtml(a.name)}</div>
         ${a.mobile ? `<div>📞 ${escapeHtml(a.mobile)}</div>` : ''}

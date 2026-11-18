@@ -134,6 +134,8 @@ function handleGet(e) {
   const action = e.parameter.action;
   try {
     switch (action) {
+      case 'findMyBookings':
+        return jsonResponse({ ok: true, data: findMyBookings(e.parameter.packageId, e.parameter.mobile) });
       case 'getBootstrap':
         return jsonResponse({ ok: true, data: getBootstrap() });
       case 'getPackagesSummary':
@@ -230,6 +232,8 @@ function handlePost(e) {
         return jsonResponse(manageAdmin(body));
       case 'getAdmins':
         return jsonResponse({ ok: true, data: getAdmins() });
+      case 'submitPayment':
+        return jsonResponse(submitPayment(body));
       case 'saveSettings':
         return jsonResponse(saveSettings(body));
       default:
@@ -301,7 +305,8 @@ const SETTING_KEYS = [
   'siteNameBn', 'siteNameEn', 'tagline', 'address',
   'mobile1', 'mobile2', 'mobile3', 'email',
   'logoUrl', 'heroImageUrl',
-  'facebookUrl', 'youtubeUrl', 'instagramUrl', 'tiktokUrl'
+  'facebookUrl', 'youtubeUrl', 'instagramUrl', 'tiktokUrl',
+  'paymentMethods'
 ];
 
 function getSettingsSheet() {
@@ -973,4 +978,90 @@ function authorizeDrive() {
     if (!it.hasNext()) DriveApp.createFolder(n);
   });
   return 'Drive অনুমতি দেওয়া হয়েছে';
+}
+
+// ---------- পেমেন্ট (বুকিংয়ের পরের ধাপ) ----------
+
+function normMobile(m) { return String(m === null || m === undefined ? '' : m).replace(/^'/, '').trim(); }
+
+// একটি মোবাইল নম্বরের এই প্যাকেজের বকেয়া থাকা বুকিংগুলো (পেমেন্ট ফরমে ফিরে আসার জন্য)
+function findMyBookings(packageId, mobile) {
+  const m = normMobile(mobile);
+  if (!m || !packageId) return [];
+  return getBookings(packageId)
+    .filter(b => b.status !== 'cancelled' && normMobile(b.mobile) === m && Number(b.dueAmount) > 0)
+    .map(b => ({
+      id: b.id, serial: b.serial, name: b.name, mobile: normMobile(b.mobile), seats: b.seats,
+      delegateFee: b.delegateFee, paidAmount: b.paidAmount, dueAmount: b.dueAmount, status: b.status
+    }));
+}
+
+// body: bookingId, mobile, amount, kind ('mobile'|'bank'|'cash'), mediumName, details{...}, receivedBy
+function submitPayment(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sheet = getSheet(SHEET_NAMES.BOOKINGS);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].slice();
+    let infoCol = headers.indexOf('paymentInfo');
+    if (infoCol < 0) {
+      sheet.getRange(1, headers.length + 1).setValue('paymentInfo');
+      headers.push('paymentInfo');
+      infoCol = headers.length - 1;
+    }
+    const idCol = headers.indexOf('id');
+    const col = name => headers.indexOf(name) + 1;
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][idCol] !== body.bookingId) continue;
+      const row = i + 1;
+      if (normMobile(data[i][headers.indexOf('mobile')]) !== normMobile(body.mobile)) {
+        return { ok: false, error: 'মোবাইল নম্বর মেলেনি' };
+      }
+      if (data[i][headers.indexOf('status')] === 'cancelled') return { ok: false, error: 'এই বুকিংটি বাতিল হয়ে গেছে' };
+
+      const fee = Number(data[i][headers.indexOf('delegateFee')]) || 0;
+      const paid = Number(data[i][headers.indexOf('paidAmount')]) || 0;
+      const due = fee - paid;
+      const amount = Number(body.amount) || 0;
+      if (!(amount > 0)) return { ok: false, error: 'জমার পরিমাণ দিন' };
+      if (amount > due) return { ok: false, error: 'জমার পরিমাণ বকেয়ার (৳' + due + ') চেয়ে বেশি হতে পারে না' };
+
+      const kind = body.kind;
+      const d = body.details || {};
+      let label = '', ref = '';
+      if (kind === 'mobile') {
+        if (!body.mediumName || !d.senderMobile || !d.transactionId) return { ok: false, error: 'মাধ্যম, মোবাইল নং ও ট্রানজেকশন আইডি দিন' };
+        label = body.mediumName; ref = d.transactionId;
+      } else if (kind === 'bank') {
+        if (!body.mediumName || !d.accountNo || !d.branch) return { ok: false, error: 'ব্যাংক, একাউন্ট নং ও শাখা দিন' };
+        label = 'ব্যাংক - ' + body.mediumName; ref = d.accountNo;
+      } else if (kind === 'cash') {
+        if (!body.receivedBy) return { ok: false, error: 'কার কাছে টাকা জমা দিয়েছেন তা নির্বাচন করুন' };
+        label = 'cash'; ref = '';
+      } else {
+        return { ok: false, error: 'পেমেন্টের ধরণ নির্বাচন করুন' };
+      }
+
+      let history = [];
+      try { history = JSON.parse(data[i][infoCol] || '[]'); } catch (err) { history = []; }
+      history.push({
+        date: new Date().toISOString(), amount: amount, kind: kind,
+        medium: body.mediumName || '', details: d, receivedBy: body.receivedBy || ''
+      });
+
+      sheet.getRange(row, col('paidAmount')).setValue(paid + amount);
+      sheet.getRange(row, col('dueAmount')).setValue(fee - paid - amount);
+      sheet.getRange(row, col('paymentMethod')).setValue(label);
+      sheet.getRange(row, col('transactionId')).setValue(ref);
+      if (body.receivedBy) sheet.getRange(row, col('receivedBy')).setValue(body.receivedBy);
+      sheet.getRange(row, infoCol + 1).setValue(JSON.stringify(history));
+      SpreadsheetApp.flush();
+      return { ok: true, data: { paidAmount: paid + amount, dueAmount: fee - paid - amount } };
+    }
+    return { ok: false, error: 'বুকিং পাওয়া যায়নি' };
+  } finally {
+    lock.releaseLock();
+  }
 }

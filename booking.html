@@ -11,8 +11,6 @@
 </head>
 <body>
 
-<div class="top-strip"><div class="container"><span class="js-header-admin-line"></span></div></div>
-
 <header class="site-header">
   <div class="container">
     <div class="brand">
@@ -45,11 +43,18 @@
 <script>
 const params = new URLSearchParams(location.search);
 const pkgIdentifier = params.get('pkg');
+const SAVED_MOBILE_KEY = 'tg_booking_mobile';
 
 let currentPackage = null;
 let currentSeats = [];
 let selectedSeats = []; // [{vehicleName, seatNo}]
-let adminNames = [];
+let payMethods = [];    // এডমিনের "ব্যবস্থাপনা > ব্যাংকিং তথ্য" থেকে
+let adminNames = null;
+
+function parsePayMethods(settings) {
+  try { const a = JSON.parse((settings && settings.paymentMethods) || '[]'); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
 
 async function init() {
   const content = qs('#page-content');
@@ -58,32 +63,47 @@ async function init() {
     return;
   }
   try {
-    // একটাই কল - প্যাকেজ + সীট একসাথে (দ্রুত লোড)
-    const [res, adminRes] = await Promise.all([
+    const [res, setRes] = await Promise.all([
       apiGet('getPackageFull', { id: pkgIdentifier }, { noCache: true }),
-      apiGet('getAdminNames', null, { noCache: true }).catch(() => ({ ok: false }))
+      apiGet('getSettings', null, { noCache: true }).catch(() => ({ ok: false }))
     ]);
     if (!res.ok || !res.data || !res.data.package) throw new Error('প্যাকেজ পাওয়া যায়নি');
     currentPackage = res.data.package;
     currentSeats = res.data.seats;
-    adminNames = (adminRes && adminRes.ok) ? adminRes.data : [];
+    payMethods = setRes && setRes.ok ? parsePayMethods(setRes.data) : [];
     render();
+    initResume();
   } catch (err) {
     content.innerHTML = '<div class="empty-state">লোড করতে সমস্যা: ' + err.message + '</div>';
   }
 }
 
+// ============================================================
+// ধাপ ১: বুকিং তথ্য ও সীট নির্বাচন
+// ============================================================
+
 function render() {
   const content = qs('#page-content');
   const p = currentPackage;
+  selectedSeats = [];
 
   content.innerHTML = `
-    <div class="flex-between" style="margin-bottom: 28px;">
+    <div class="flex-between" style="margin-bottom: 20px;">
       <div>
-        <span class="eyebrow">🎫 বুকিং ফরম</span>
+        <span class="eyebrow" style="background:var(--cream-dark); color:var(--forest); border-color:var(--border);">🎫 বুকিং ফরম</span>
         <h1 style="margin:0;">${escapeHtml(p.spotName)}</h1>
         <p class="text-muted">${formatDate(p.startDate)} — ${formatDate(p.endDate)} · ${toBengaliNumber(p.totalDays)} দিন · ${formatTaka(p.delegateFee)}/জন</p>
       </div>
+    </div>
+
+    <div class="form-card resume-card">
+      <strong>💳 আগে বুকিং দিয়েছেন কিন্তু পেমেন্ট বাকি?</strong>
+      <div class="text-muted" style="font-size:0.85rem;">বুকিংয়ের মোবাইল নম্বর দিয়ে খুঁজে পেমেন্ট সম্পন্ন করুন।</div>
+      <form id="resume-form">
+        <input type="tel" name="mobile" placeholder="01XXXXXXXXX" pattern="[0-9]{11}" required>
+        <button type="submit" class="btn btn-forest btn-sm">খুঁজুন</button>
+      </form>
+      <div id="resume-results"></div>
     </div>
 
     <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap: 28px;" id="booking-grid">
@@ -102,34 +122,8 @@ function render() {
               <label>নির্বাচিত সীট সমূহ (<span id="seat-count">০</span>টি)</label>
               <div id="selected-seat-display" style="min-height:44px; background:var(--cream-dark); border-radius:9px; padding:10px 14px; font-weight:700; color:var(--forest);">বামপাশ থেকে সীট বেছে নিন</div>
             </div>
-            <div class="form-row">
-              <div class="form-group"><label>মোট ডেলিগেট ফি</label><input type="text" id="fee-display" readonly value="${formatTaka(0)}" style="background:var(--cream-dark);"></div>
-              <div class="form-group"><label>জমা দিচ্ছেন (টাকা)</label><input type="number" name="paidAmount" min="0" placeholder="0" id="paid-input"></div>
-            </div>
-            <div class="form-group" id="payment-method-group" style="display:none;">
-              <label>পেমেন্ট মাধ্যম *</label>
-              <select name="paymentMethod" id="payment-method-select">
-                <option value="bkash">📱 বিকাশ</option>
-                <option value="nagad">📱 নগদ</option>
-                <option value="cash">💵 হাতে হাতে / সরাসরি পরিশোধ</option>
-              </select>
-              <div id="payment-number-box" class="mt-24" style="margin-top:12px; padding:12px 16px; background:var(--cream-dark); border-radius:9px; display:none;">
-                <div class="text-muted" style="font-size:0.85rem; margin-bottom:4px;" id="payment-number-label"></div>
-                <a href="#" id="payment-number-link" style="font-weight:700; font-size:1.1rem; color:var(--forest);" target="_blank"></a>
-              </div>
-            </div>
-            <div class="form-group" id="transaction-id-group" style="display:none;">
-              <label>ট্রানজেকশন আইডি (বিকাশ/নগদ) *</label>
-              <input type="text" name="transactionId" id="transaction-id-input" placeholder="যেমন: 8N7A2X9K1M">
-              <div class="hint">উপরের নাম্বারে টাকা পাঠিয়ে এসএমএস-এ পাওয়া ট্রানজেকশন আইডিটি এখানে বসান</div>
-            </div>
-            <div class="form-group" id="received-by-group" style="display:none;">
-              <label>কার কাছে টাকা জমা দিয়েছেন? *</label>
-              <select name="receivedBy" id="received-by-select">
-                <option value="">-- নির্বাচন করুন --</option>
-              </select>
-            </div>
-            <div class="form-group"><label>বকেয়া থাকবে</label><input type="text" id="due-display" readonly value="${formatTaka(0)}" style="background:var(--cream-dark); color:var(--red); font-weight:700;"></div>
+            <div class="form-group"><label>মোট ডেলিগেট ফি</label><input type="text" id="fee-display" readonly value="${formatTaka(0)}" style="background:var(--cream-dark); font-weight:700;"></div>
+            <div class="hint" style="margin-bottom:14px;">বুকিং তথ্য জমা দেওয়ার পর পরের ধাপে পেমেন্ট করতে হবে।</div>
             <button type="submit" class="btn btn-primary btn-block" id="submit-btn" disabled>সীট নির্বাচন করুন</button>
           </form>
         </div>
@@ -138,75 +132,12 @@ function render() {
   `;
 
   renderVehicles();
-
-  const receivedBySelect = qs('#received-by-select');
-  adminNames.forEach(a => {
-    const opt = document.createElement('option');
-    opt.value = a.name;
-    opt.textContent = a.name + (a.role === 'admin' ? ' (প্রধান এডমিন)' : ' (সহকারী এডমিন)');
-    receivedBySelect.appendChild(opt);
-  });
-
-  qs('#paid-input').addEventListener('input', updateFeeDisplay);
   qs('#booking-form').addEventListener('submit', submitBooking);
+  qs('#resume-form').addEventListener('submit', (e) => { e.preventDefault(); searchResume(new FormData(e.target).get('mobile').trim(), true); });
   if (window.innerWidth < 860) qs('#booking-grid').style.gridTemplateColumns = '1fr';
 }
 
-function totalFee() {
-  return currentPackage.delegateFee * selectedSeats.length;
-}
-
-function updateFeeDisplay() {
-  const fee = totalFee();
-  qs('#fee-display').value = formatTaka(fee);
-  const paid = Number(qs('#paid-input').value) || 0;
-  qs('#paid-input').max = fee;
-  qs('#due-display').value = formatTaka(Math.max(0, fee - paid));
-
-  const methodGroup = qs('#payment-method-group');
-  const txnGroup = qs('#transaction-id-group');
-  const methodSelect = qs('#payment-method-select');
-  const txnInput = qs('#transaction-id-input');
-  const numberBox = qs('#payment-number-box');
-  const numberLabel = qs('#payment-number-label');
-  const numberLink = qs('#payment-number-link');
-  const receivedByGroup = qs('#received-by-group');
-  const receivedBySelect = qs('#received-by-select');
-
-  if (paid > 0) {
-    methodGroup.style.display = '';
-    receivedByGroup.style.display = '';
-    receivedBySelect.required = true;
-    updatePaymentUI();
-  } else {
-    methodGroup.style.display = 'none';
-    txnGroup.style.display = 'none';
-    numberBox.style.display = 'none';
-    txnInput.required = false;
-    receivedByGroup.style.display = 'none';
-    receivedBySelect.required = false;
-  }
-
-  function updatePaymentUI() {
-    const method = methodSelect.value;
-    if (method === 'cash') {
-      txnGroup.style.display = 'none';
-      numberBox.style.display = 'none';
-      txnInput.required = false;
-    } else {
-      txnGroup.style.display = '';
-      txnInput.required = true;
-      numberBox.style.display = '';
-      const number = method === 'bkash' ? SITE_CONFIG.bkashNumber : SITE_CONFIG.nagadNumber;
-      const appName = method === 'bkash' ? 'বিকাশ' : 'নগদ';
-      numberLabel.textContent = `এই ${appName} নাম্বারে "সেন্ড মানি" করুন (নাম্বারে ক্লিক করলে ${appName} অ্যাপ খুলে যাবে):`;
-      numberLink.textContent = '📲 ' + number;
-      // মোবাইলে ক্লিক করলে ডায়াল/অ্যাপ ওপেন হওয়ার চেষ্টা করবে (bKash/Nagad-এর কোনো অফিসিয়াল ওয়েব ডিপ-লিংক নেই, তাই tel: ব্যবহার করা হলো যা নাম্বারটি কল/কপি করতে সাহায্য করে)
-      numberLink.href = 'tel:' + number;
-    }
-  }
-  methodSelect.onchange = updatePaymentUI;
-}
+function totalFee() { return currentPackage.delegateFee * selectedSeats.length; }
 
 function renderVehicles() {
   const container = qs('#vehicle-list');
@@ -305,45 +236,25 @@ function toggleSeat(vehicleName, seatNo) {
 
   renderVehicles();
   qs('#seat-count').textContent = toBengaliNumber(selectedSeats.length);
-
-  const displayEl = qs('#selected-seat-display');
-  displayEl.innerHTML = selectedSeats.length === 0
+  qs('#selected-seat-display').textContent = selectedSeats.length === 0
     ? 'বামপাশ থেকে সীট বেছে নিন'
     : selectedSeats.map(s => `${s.vehicleName}-${s.seatNo}`).join(', ');
-
-  updateFeeDisplay();
+  qs('#fee-display').value = formatTaka(totalFee());
 
   const btn = qs('#submit-btn');
   btn.disabled = selectedSeats.length === 0;
-  btn.textContent = selectedSeats.length === 0 ? 'সীট নির্বাচন করুন' : `বুকিং সাবমিট করুন (${toBengaliNumber(selectedSeats.length)}টি সীট)`;
+  btn.textContent = selectedSeats.length === 0 ? 'সীট নির্বাচন করুন' : `বুকিং তথ্য জমা দিন (${toBengaliNumber(selectedSeats.length)}টি সীট)`;
 }
 
 async function submitBooking(e) {
   e.preventDefault();
   if (selectedSeats.length === 0) { showToast('অনুগ্রহ করে অন্তত একটি সীট নির্বাচন করুন', 'error'); return; }
 
-  const fd0 = new FormData(e.target);
-  const paidAmount0 = Number(fd0.get('paidAmount')) || 0;
-  const paymentMethod = fd0.get('paymentMethod') || '';
-  const transactionId = (fd0.get('transactionId') || '').trim();
-  const receivedBy = fd0.get('receivedBy') || '';
-
-  if (paidAmount0 > 0 && paymentMethod !== 'cash' && !transactionId) {
-    showToast('বিকাশ/নগদে পেমেন্ট করলে ট্রানজেকশন আইডি দিন', 'error');
-    return;
-  }
-  if (paidAmount0 > 0 && !receivedBy) {
-    showToast('কার কাছে টাকা জমা দিয়েছেন তা নির্বাচন করুন', 'error');
-    return;
-  }
-
-  const form = e.target;
   const btn = qs('#submit-btn');
   btn.disabled = true;
   btn.textContent = 'সাবমিট হচ্ছে...';
-
-  const fd = new FormData(form);
-  const paidAmount = Number(fd.get('paidAmount')) || 0;
+  const fd = new FormData(e.target);
+  const seats = selectedSeats.slice();
 
   try {
     const res = await apiPost('createBooking', {
@@ -352,42 +263,248 @@ async function submitBooking(e) {
       name: fd.get('name'),
       mobile: fd.get('mobile'),
       address: fd.get('address'),
-      seats: selectedSeats,
+      seats,
       delegateFee: currentPackage.delegateFee,
-      paidAmount,
-      paymentMethod: paidAmount > 0 ? paymentMethod : '',
-      transactionId: paidAmount > 0 ? transactionId : '',
-      receivedBy: paidAmount > 0 ? receivedBy : ''
+      paidAmount: 0, paymentMethod: '', transactionId: '', receivedBy: ''
     });
 
     if (!res.ok) {
       showToast(res.error || 'বুকিং ব্যর্থ হয়েছে', 'error');
-      btn.disabled = false;
       const seatRes = await apiGet('getSeats', { packageId: currentPackage.id }, { noCache: true });
       currentSeats = seatRes.ok ? seatRes.data : [];
-      selectedSeats = [];
-      renderVehicles();
-      qs('#seat-count').textContent = '০';
-      qs('#selected-seat-display').textContent = 'বামপাশ থেকে সীট বেছে নিন';
-      updateFeeDisplay();
+      render();
       return;
     }
-
-    qs('#page-content').innerHTML = `
-      <div class="empty-state">
-        <div style="font-size:3rem;">✅</div>
-        <h2>বুকিং সফল হয়েছে!</h2>
-        <p>ক্রম নং <strong>${toBengaliNumber(res.data.serial)}</strong> — ${toBengaliNumber(res.data.seatCount)}টি সীট — এডমিন কনফার্ম করলে আপনার বুকিং নিশ্চিত হবে।</p>
-        <p class="text-muted">মোট ফি: ${formatTaka(res.data.totalFee)} · বকেয়া: ${formatTaka(res.data.dueAmount)}</p>
-        <p class="text-muted">কনফার্ম হওয়ার পর <a href="ticket.html">টিকেট পেজ</a> থেকে নাম ও মোবাইল দিয়ে টিকেট বের করতে পারবেন।</p>
-        <a href="index.html" class="btn btn-forest" style="margin-top:16px;">অন্যান্য প্যাকেজ দেখুন</a>
-      </div>
-    `;
+    try { localStorage.setItem(SAVED_MOBILE_KEY, fd.get('mobile')); } catch (err) {}
+    showPaymentView({
+      id: res.data.id, serial: res.data.serial, name: fd.get('name'), mobile: fd.get('mobile'),
+      seats, delegateFee: res.data.totalFee, paidAmount: 0, dueAmount: res.data.totalFee, status: 'pending'
+    }, true);
   } catch (err) {
     showToast('একটি ত্রুটি হয়েছে: ' + err.message, 'error');
     btn.disabled = false;
-    btn.textContent = 'বুকিং সাবমিট করুন';
+    btn.textContent = 'বুকিং তথ্য জমা দিন';
   }
+}
+
+// ============================================================
+// পেমেন্টে ফিরে আসা (আগের বুকিং খুঁজে)
+// ============================================================
+
+function initResume() {
+  let saved = '';
+  try { saved = localStorage.getItem(SAVED_MOBILE_KEY) || ''; } catch (e) {}
+  if (saved) {
+    qs('#resume-form').mobile.value = saved;
+    searchResume(saved, false);
+  }
+}
+
+async function searchResume(mobile, manual) {
+  const box = qs('#resume-results');
+  box.innerHTML = '<div class="spinner" style="margin:14px auto;"></div>';
+  try {
+    const res = await apiGet('findMyBookings', { packageId: currentPackage.id, mobile }, { noCache: true });
+    const list = res.ok ? res.data : [];
+    if (list.length === 0) {
+      box.innerHTML = manual ? '<div class="text-muted" style="margin-top:10px;">এই নম্বরে পেমেন্ট বাকি আছে এমন কোনো বুকিং পাওয়া যায়নি।</div>' : '';
+      return;
+    }
+    box.innerHTML = list.map((b, i) => `
+      <div class="resume-item">
+        <div>ক্রম <strong>${toBengaliNumber(b.serial)}</strong> — ${escapeHtml((b.seats || []).map(s => s.vehicleName + '-' + s.seatNo).join(', '))}<br>
+          <span class="text-muted">বকেয়া: <strong style="color:var(--red);">${formatTaka(b.dueAmount)}</strong></span></div>
+        <button class="btn btn-primary btn-sm resume-pay-btn" data-i="${i}">💳 পেমেন্ট করুন</button>
+      </div>`).join('');
+    qsa('.resume-pay-btn', box).forEach(btn => btn.addEventListener('click', () => showPaymentView(list[Number(btn.dataset.i)], false)));
+  } catch (err) {
+    box.innerHTML = '<div class="text-muted" style="margin-top:10px;">খুঁজতে সমস্যা হয়েছে</div>';
+  }
+}
+
+// ============================================================
+// ধাপ ২: পেমেন্ট ফরম
+// ============================================================
+
+const MFS_APPS = [
+  { keys: ['bkash', 'বিকাশ'], pkg: 'com.bKash.customerapp', scheme: 'bkash' },
+  { keys: ['nagad', 'নগদ'], pkg: 'com.konasl.nagad', scheme: 'nagad' },
+  { keys: ['rocket', 'রকেট'], pkg: 'com.dbbl.mbs.apps.main', scheme: 'rocket' },
+  { keys: ['upay', 'উপায়'], pkg: 'com.fsiblbd.upay', scheme: 'upay' }
+];
+
+function openMfsApp(name) {
+  const n = String(name || '').toLowerCase();
+  const app = MFS_APPS.find(a => a.keys.some(k => n.includes(k)));
+  if (!app) { showToast('এই মাধ্যমের অ্যাপ নিজে খুলে পেমেন্ট করুন', 'info'); return; }
+  if (/android/i.test(navigator.userAgent)) {
+    const fallback = encodeURIComponent('https://play.google.com/store/apps/details?id=' + app.pkg);
+    location.href = `intent://open#Intent;scheme=${app.scheme};package=${app.pkg};S.browser_fallback_url=${fallback};end`;
+  } else {
+    location.href = app.scheme + '://';
+  }
+}
+
+function copyText(text) {
+  const done = () => showToast('কপি হয়েছে', 'success');
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, () => showToast(text, 'info'));
+  else showToast(text, 'info');
+}
+
+function showPaymentView(b, justBooked) {
+  window.scrollTo(0, 0);
+  const due = Number(b.dueAmount) || 0;
+  const seatText = (b.seats || []).map(s => s.vehicleName + '-' + s.seatNo).join(', ');
+  const mobileList = payMethods.filter(m => m.kind === 'mobile');
+  const bankList = payMethods.filter(m => m.kind === 'bank');
+
+  qs('#page-content').innerHTML = `
+    <div class="pay-wrap">
+      <span class="eyebrow" style="background:var(--cream-dark); color:var(--forest); border-color:var(--border);">💳 পেমেন্ট</span>
+      <h2 style="margin-top:0;">${escapeHtml(currentPackage.spotName)}</h2>
+      ${justBooked ? `<div class="pay-info-box" style="border-style:solid;">✅ আপনার বুকিং তথ্য জমা হয়েছে এবং সীট আপনার নামে ধরে রাখা হয়েছে। এখন পেমেন্ট সম্পন্ন করুন। এখন না পারলে পরে এই পেজে <strong>"আগে বুকিং দিয়েছেন কিন্তু পেমেন্ট বাকি?"</strong> অংশে মোবাইল নম্বর দিয়ে ফিরে আসতে পারবেন।</div>` : ''}
+      <div class="pay-summary">
+        <div class="row"><span>ক্রম নং</span><strong>${toBengaliNumber(b.serial)}</strong></div>
+        <div class="row"><span>নাম</span><strong>${escapeHtml(b.name)}</strong></div>
+        <div class="row"><span>সীট</span><strong>${escapeHtml(seatText)}</strong></div>
+        <div class="row"><span>মোট ফি</span><strong>${formatTaka(b.delegateFee)}</strong></div>
+        <div class="row"><span>এ পর্যন্ত জমা</span><strong>${formatTaka(b.paidAmount)}</strong></div>
+        <div class="row"><span>বকেয়া</span><strong style="color:var(--red);">${formatTaka(due)}</strong></div>
+      </div>
+      <div class="form-card">
+        <form id="pay-form">
+          <div class="form-group"><label>জমা দিচ্ছেন (টাকা) *</label><input type="number" id="pay-amount" min="1" max="${due}" value="${due}" required></div>
+          <div class="form-group"><label>পেমেন্টের ধরণ *</label>
+            <select id="pay-kind" required>
+              <option value="">-- নির্বাচন করুন --</option>
+              ${mobileList.length ? '<option value="mobile">📱 মোবাইল ব্যাংকিং</option>' : ''}
+              ${bankList.length ? '<option value="bank">🏦 ব্যাংকিং</option>' : ''}
+              <option value="cash">💵 হাতে হাতে / সরাসরি</option>
+            </select>
+          </div>
+          <div id="pay-dynamic"></div>
+          <button type="submit" class="btn btn-primary btn-block" id="pay-submit-btn" style="display:none;">পেমেন্ট তথ্য জমা দিন</button>
+        </form>
+      </div>
+      <div style="margin-top:16px;"><a href="booking.html?pkg=${encodeURIComponent(pkgIdentifier)}" class="btn btn-outline-forest btn-sm">← বুকিং পেজে ফিরুন</a></div>
+    </div>
+  `;
+
+  const dyn = qs('#pay-dynamic');
+  const submitBtn = qs('#pay-submit-btn');
+
+  qs('#pay-kind').addEventListener('change', async (e) => {
+    const kind = e.target.value;
+    submitBtn.style.display = kind ? '' : 'none';
+    if (kind === 'mobile') {
+      dyn.innerHTML = `
+        <div class="form-group"><label>মাধ্যমের নাম *</label>
+          <select id="pay-medium" required>
+            <option value="">-- নির্বাচন করুন --</option>
+            ${mobileList.map((m, i) => `<option value="${i}">${escapeHtml(m.name)}${m.mmType ? ' (' + escapeHtml(m.mmType) + ')' : ''}</option>`).join('')}
+          </select>
+        </div>
+        <div id="pay-medium-info"></div>`;
+      qs('#pay-medium').addEventListener('change', (ev) => {
+        const m = mobileList[Number(ev.target.value)];
+        const info = qs('#pay-medium-info');
+        if (!m || ev.target.value === '') { info.innerHTML = ''; return; }
+        info.innerHTML = `
+          <div class="pay-info-box">
+            <div><strong>${escapeHtml(m.name)}</strong>${m.mmType ? ' · ' + escapeHtml(m.mmType) : ''}</div>
+            <div>এই নম্বরে টাকা পাঠান: <strong>${escapeHtml(m.number)}</strong> <button type="button" class="btn btn-sm btn-outline-forest" id="copy-num-btn">কপি</button></div>
+            ${m.holder ? `<div>অ্যাকাউন্টধারী: ${escapeHtml(m.holder)}</div>` : ''}
+            ${m.note ? `<div class="text-muted">নোট: ${escapeHtml(m.note)}</div>` : ''}
+            <button type="button" class="btn btn-forest btn-sm" id="open-app-btn" style="margin-top:8px;">📲 ${escapeHtml(m.name)} অ্যাপ ওপেন করুন</button>
+          </div>
+          <div class="hint" style="margin-bottom:12px;">অ্যাপে পেমেন্ট সম্পন্ন করে নিচের তথ্য পূরণ করুন।</div>
+          <div class="form-group"><label>যে মোবাইল নম্বর থেকে পাঠিয়েছেন *</label><input type="tel" id="pay-sender" required pattern="[0-9]{11}" placeholder="01XXXXXXXXX"></div>
+          <div class="form-group"><label>ট্রানজেকশন আইডি *</label><input type="text" id="pay-txn" required placeholder="যেমন: 8N7A2X9K1M"></div>`;
+        qs('#copy-num-btn').addEventListener('click', () => copyText(m.number));
+        qs('#open-app-btn').addEventListener('click', () => openMfsApp(m.name));
+      });
+    } else if (kind === 'bank') {
+      dyn.innerHTML = `
+        <div class="form-group"><label>ব্যাংকের নাম *</label>
+          <select id="pay-bank" required>
+            <option value="">-- নির্বাচন করুন --</option>
+            ${bankList.map((m, i) => `<option value="${i}">${escapeHtml(m.bankName)}</option>`).join('')}
+          </select>
+        </div>
+        <div id="pay-bank-info"></div>`;
+      qs('#pay-bank').addEventListener('change', (ev) => {
+        const m = bankList[Number(ev.target.value)];
+        const info = qs('#pay-bank-info');
+        if (!m || ev.target.value === '') { info.innerHTML = ''; return; }
+        info.innerHTML = `
+          <div class="pay-info-box">
+            <div><strong>${escapeHtml(m.bankName)}</strong>${m.branch ? ' · ' + escapeHtml(m.branch) : ''}</div>
+            ${m.accountName ? `<div>একাউন্টের নাম: ${escapeHtml(m.accountName)}</div>` : ''}
+            <div>একাউন্ট নং: <strong>${escapeHtml(m.accountNo)}</strong> <button type="button" class="btn btn-sm btn-outline-forest" id="copy-acc-btn">কপি</button></div>
+          </div>
+          <div class="hint" style="margin-bottom:12px;">উপরের একাউন্টে পেমেন্ট করে নিচের তথ্য পূরণ করুন।</div>
+          <div class="form-group"><label>আপনার একাউন্ট নং (যেখান থেকে পাঠিয়েছেন) *</label><input type="text" id="pay-acc" required></div>
+          <div class="form-group"><label>শাখা *</label><input type="text" id="pay-branch" required placeholder="আপনার ব্যাংকের শাখা"></div>`;
+        qs('#copy-acc-btn').addEventListener('click', () => copyText(m.accountNo));
+      });
+    } else if (kind === 'cash') {
+      dyn.innerHTML = `<div class="form-group"><label>কার কাছে টাকা জমা দিয়েছেন? *</label><select id="pay-received" required><option value="">লোড হচ্ছে...</option></select></div>`;
+      try {
+        if (!adminNames) { const r = await apiGet('getAdminNames'); adminNames = r.ok ? r.data : []; }
+        qs('#pay-received').innerHTML = '<option value="">-- নির্বাচন করুন --</option>' + adminNames.map(a => `<option value="${escapeHtml(a.name)}">${escapeHtml(a.name)}</option>`).join('');
+      } catch (err) { qs('#pay-received').innerHTML = '<option value="">লোড করা যায়নি</option>'; }
+    } else {
+      dyn.innerHTML = '';
+    }
+  });
+
+  qs('#pay-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const kind = qs('#pay-kind').value;
+    const amount = Number(qs('#pay-amount').value) || 0;
+    if (!kind) { showToast('পেমেন্টের ধরণ নির্বাচন করুন', 'error'); return; }
+    if (amount < 1 || amount > due) { showToast('জমার পরিমাণ ১ থেকে ' + due + ' টাকার মধ্যে দিন', 'error'); return; }
+
+    const payload = { bookingId: b.id, mobile: b.mobile, amount, kind, details: {} };
+    if (kind === 'mobile') {
+      const m = mobileList[Number(qs('#pay-medium').value)];
+      const sender = qs('#pay-sender') && qs('#pay-sender').value.trim();
+      const txn = qs('#pay-txn') && qs('#pay-txn').value.trim();
+      if (!m) { showToast('মাধ্যমের নাম নির্বাচন করুন', 'error'); return; }
+      if (!sender || !txn) { showToast('মোবাইল নম্বর ও ট্রানজেকশন আইডি দুটোই দিতে হবে', 'error'); return; }
+      payload.mediumName = m.name;
+      payload.details = { senderMobile: sender, transactionId: txn, toNumber: m.number, mmType: m.mmType || '' };
+    } else if (kind === 'bank') {
+      const m = bankList[Number(qs('#pay-bank').value)];
+      const acc = qs('#pay-acc') && qs('#pay-acc').value.trim();
+      const br = qs('#pay-branch') && qs('#pay-branch').value.trim();
+      if (!m) { showToast('ব্যাংকের নাম নির্বাচন করুন', 'error'); return; }
+      if (!acc || !br) { showToast('একাউন্ট নং ও শাখা দুটোই দিতে হবে', 'error'); return; }
+      payload.mediumName = m.bankName;
+      payload.details = { accountNo: acc, branch: br, toAccountNo: m.accountNo };
+    } else {
+      payload.receivedBy = qs('#pay-received').value;
+      if (!payload.receivedBy) { showToast('কার কাছে টাকা জমা দিয়েছেন তা নির্বাচন করুন', 'error'); return; }
+    }
+
+    submitBtn.disabled = true; submitBtn.textContent = 'জমা হচ্ছে...';
+    try {
+      const res = await apiPost('submitPayment', payload);
+      if (!res.ok) throw new Error(res.error || 'ব্যর্থ হয়েছে');
+      qs('#page-content').innerHTML = `
+        <div class="empty-state">
+          <div style="font-size:3rem;">✅</div>
+          <h2>পেমেন্ট তথ্য জমা হয়েছে!</h2>
+          <p>ক্রম নং <strong>${toBengaliNumber(b.serial)}</strong> — এ পর্যন্ত জমা: <strong>${formatTaka(res.data.paidAmount)}</strong> · বকেয়া: <strong>${formatTaka(res.data.dueAmount)}</strong></p>
+          <p class="text-muted">এডমিন যাচাই করে আপনার বুকিং কনফার্ম করবেন। কনফার্ম হওয়ার পর <a href="ticket.html">টিকেট পেজ</a> থেকে নাম ও মোবাইল দিয়ে টিকেট বের করতে পারবেন।</p>
+          ${Number(res.data.dueAmount) > 0 ? '<p class="text-muted">বাকি টাকা পরে এই বুকিং পেজে মোবাইল নম্বর দিয়ে খুঁজে পরিশোধ করতে পারবেন।</p>' : ''}
+          <a href="index.html" class="btn btn-forest" style="margin-top:16px;">অন্যান্য প্যাকেজ দেখুন</a>
+        </div>`;
+    } catch (err) {
+      showToast('ত্রুটি: ' + err.message, 'error');
+      submitBtn.disabled = false; submitBtn.textContent = 'পেমেন্ট তথ্য জমা দিন';
+    }
+  });
 }
 
 init();

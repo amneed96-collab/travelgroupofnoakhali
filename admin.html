@@ -490,7 +490,7 @@ async function loadBookingsForPackage(pkgId, pkg) {
       </div>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>ক্রম</th><th>নাম</th><th>মোবাইল</th><th>সীট সমূহ</th><th>মোট ফি</th><th>জমা</th><th>বকেয়া</th><th>স্ট্যাটাস</th><th>কার্যক্রম</th></tr></thead>
+      <thead><tr><th>ক্রম</th><th>নাম</th><th>মোবাইল</th><th>সীট সমূহ</th><th>মোট ফি</th><th>জমা</th><th>বকেয়া</th><th>পেমেন্ট তথ্য</th><th>স্ট্যাটাস</th><th>কার্যক্রম</th></tr></thead>
       <tbody>
         ${bookings.map(b => {
           const seatList = (b.seats || []).map(s => s.vehicleName + '-' + s.seatNo).join(', ');
@@ -503,13 +503,14 @@ async function loadBookingsForPackage(pkgId, pkg) {
             <td>${formatTaka(b.delegateFee)}</td>
             <td><input type="number" class="paid-input" data-id="${b.id}" data-fee="${b.delegateFee}" value="${b.paidAmount}" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;"></td>
             <td class="due-cell-${b.id}">${formatTaka(b.dueAmount)}</td>
+            <td style="white-space:normal; min-width:180px; font-size:0.8rem;">${paymentInfoHtml(b)}</td>
             <td><span class="status-chip status-${b.status}">${statusLabel(b.status)}</span></td>
             <td>
               ${b.status === 'pending' ? `<button class="btn btn-sm btn-primary confirm-btn" data-id="${b.id}">কনফার্ম</button>` : ''}
               ${b.status !== 'cancelled' ? `<button class="btn btn-sm btn-danger cancel-btn" data-id="${b.id}">বাতিল</button>` : ''}
             </td>
           </tr>`;
-        }).join('') || '<tr><td colspan="9" class="text-center text-muted">কোনো বুকিং নেই</td></tr>'}
+        }).join('') || '<tr><td colspan="10" class="text-center text-muted">কোনো বুকিং নেই</td></tr>'}
       </tbody>
     </table></div>
   `;
@@ -544,6 +545,21 @@ async function loadBookingsForPackage(pkgId, pkg) {
 
   qs('#hold-seats-btn').addEventListener('click', () => openHoldSeatsModal(pkg, seats));
   qs('#print-sheet-btn2').addEventListener('click', () => openBookingSheetPrint(pkg));
+}
+
+// বুকিং ফরম থেকে জমা দেওয়া পেমেন্ট তথ্য (যাচাইয়ের জন্য)
+function paymentInfoHtml(b) {
+  let list = [];
+  try { list = JSON.parse(b.paymentInfo || '[]'); } catch (e) { list = []; }
+  if (!list.length) return b.transactionId ? 'TrxID: ' + escapeHtml(b.transactionId) : '<span class="text-muted">—</span>';
+  return list.map(x => {
+    const d = x.details || {};
+    let text = '';
+    if (x.kind === 'mobile') text = `${escapeHtml(x.medium)}: ${escapeHtml(d.senderMobile || '')} · TrxID ${escapeHtml(d.transactionId || '')}`;
+    else if (x.kind === 'bank') text = `${escapeHtml(x.medium)}: A/C ${escapeHtml(d.accountNo || '')}, ${escapeHtml(d.branch || '')}`;
+    else text = `হাতে হাতে → ${escapeHtml(x.receivedBy || '')}`;
+    return `<div>${formatTaka(x.amount)} — ${text}</div>`;
+  }).join('');
 }
 
 function statusLabel(status) { return { pending: 'অপেক্ষমান', confirmed: 'কনফার্ম', cancelled: 'বাতিল' }[status] || status; }
@@ -890,6 +906,7 @@ async function printPackageDetail(packageId, spotName) {
   const net = income - expense;
   const color = net >= 0 ? '#257454' : '#B3413B';
   const methodLabel = { bkash: 'বিকাশ', nagad: 'নগদ', cash: 'হাতে হাতে' };
+  const methodText = b => methodLabel[b.paymentMethod] || b.paymentMethod || '';
   const seatText = b => (b.seats || []).map(s => s.vehicleName + '-' + s.seatNo).join(', ');
   const incomeRows = bookings.filter(b => Number(b.paidAmount) > 0);
 
@@ -917,7 +934,7 @@ async function printPackageDetail(packageId, spotName) {
       <table class="list">
         <thead><tr><th>ক্রম</th><th>তারিখ</th><th>নাম</th><th>মোবাইল</th><th>সীট</th><th>মাধ্যম</th><th class="num">জমা</th></tr></thead>
         <tbody>
-          ${incomeRows.map((b, i) => `<tr><td>${toBengaliNumber(i + 1)}</td><td>${formatDate(b.date)}</td><td>${escapeHtml(b.name)}</td><td>${escapeHtml(b.mobile)}</td><td>${escapeHtml(seatText(b))}</td><td>${methodLabel[b.paymentMethod] || ''}</td><td class="num">${formatTaka(b.paidAmount)}</td></tr>`).join('') || '<tr><td colspan="7" style="text-align:center;">কোনো আয় নেই</td></tr>'}
+          ${incomeRows.map((b, i) => `<tr><td>${toBengaliNumber(i + 1)}</td><td>${formatDate(b.date)}</td><td>${escapeHtml(b.name)}</td><td>${escapeHtml(b.mobile)}</td><td>${escapeHtml(seatText(b))}</td><td>${escapeHtml(methodText(b))}</td><td class="num">${formatTaka(b.paidAmount)}</td></tr>`).join('') || '<tr><td colspan="7" style="text-align:center;">কোনো আয় নেই</td></tr>'}
           <tr><td colspan="6" class="num"><strong>মোট আয়</strong></td><td class="num"><strong>${formatTaka(income)}</strong></td></tr>
         </tbody>
       </table>
@@ -1200,51 +1217,100 @@ function resizeImageFile(file, maxSize, asPng) {
   });
 }
 
+let settingsCache = {};
+const PANELS = {
+  site: { btn: '🏷️ ওয়েবসাইট তথ্য', render: renderSitePanel },
+  social: { btn: '🔗 সোশ্যাল লিংক', render: renderSocialPanel },
+  bank: { btn: '🏦 ব্যাংকিং তথ্য', render: renderBankPanel }
+};
+
 async function renderSettingsTab() {
   const session = Session.get();
   if (session.role !== 'admin') { qs('#admin-main').innerHTML = '<div class="empty-state">এই পাতা শুধু এডমিনের জন্য।</div>'; return; }
-
   const main = qs('#admin-main');
   const res = await apiGet('getSettings', null, { noCache: true });
-  const s = res.ok ? res.data : {};
-  const phones = SITE_CONFIG.mobiles || [];
-  const val = (key, fallback) => escapeHtml(s[key] !== undefined ? s[key] : (fallback || ''));
+  settingsCache = res.ok ? res.data : {};
   settingsImages = { logo: null, hero: null, clearLogo: false, clearHero: false };
-  const logoUrl = s.logoUrl !== undefined ? s.logoUrl : SITE_CONFIG.logoUrl;
-  const heroUrl = s.heroImageUrl !== undefined ? s.heroImageUrl : SITE_CONFIG.heroImageUrl;
 
   main.innerHTML = `
-    <h2>ব্যবস্থাপনা — ওয়েবসাইট তথ্য</h2>
-    <p class="text-muted">এখানে যা সংরক্ষণ করবেন তা পুরো ওয়েবসাইটে (হেডার, ফুটার, টিকেট, প্রিন্ট ইত্যাদি) স্বয়ংক্রিয়ভাবে বসে যাবে।</p>
+    <h2>ব্যবস্থাপনা</h2>
+    <p class="text-muted" style="margin:0;">বাটনে ক্লিক করলে ফরম খুলবে, আবার ক্লিক করলে বন্ধ হবে।</p>
+    <div class="settings-toggles">
+      ${Object.keys(PANELS).map(k => `<button type="button" class="btn btn-forest" data-panel="${k}">${PANELS[k].btn}</button>`).join('')}
+    </div>
+    ${Object.keys(PANELS).map(k => `<div id="panel-${k}" class="mt-24"></div>`).join('')}
+  `;
+  qsa('.settings-toggles .btn').forEach(btn => btn.addEventListener('click', () => togglePanel(btn.dataset.panel)));
+}
+
+function togglePanel(key) {
+  const area = qs('#panel-' + key);
+  const btn = qs(`.settings-toggles [data-panel="${key}"]`);
+  if (area.innerHTML.trim()) { closePanel(key); return; }
+  area.innerHTML = PANELS[key].render();
+  btn.classList.add('open');
+  btn.textContent = '✕ ' + PANELS[key].btn.replace(/^\S+\s/, '') + ' (বন্ধ করুন)';
+  if (key === 'site') wireSitePanel();
+  if (key === 'social') wireSocialPanel();
+  if (key === 'bank') wireBankPanel();
+  area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closePanel(key) {
+  const area = qs('#panel-' + key); if (area) area.innerHTML = '';
+  const btn = qs(`.settings-toggles [data-panel="${key}"]`);
+  if (btn) { btn.classList.remove('open'); btn.textContent = PANELS[key].btn; }
+}
+
+const sv = (key, fallback) => escapeHtml(settingsCache[key] !== undefined ? settingsCache[key] : (fallback || ''));
+
+// সংরক্ষণের পর: সেটিংস ক্যাশ হালনাগাদ, পুরো সাইটে প্রয়োগ
+async function persistSettings(payload) {
+  const res = await apiPost('saveSettings', payload);
+  if (!res.ok) throw new Error(res.error || 'ব্যর্থ হয়েছে');
+  settingsCache = res.data;
+  try { localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(res.data)); } catch (e) {}
+  if (settingsImages.clearHero) SITE_CONFIG.heroImageUrl = '';
+  applySettings(res.data);
+  renderAllSiteInfo();
+  return res.data;
+}
+
+// ---------- ১. ওয়েবসাইট তথ্য ----------
+
+function renderSitePanel() {
+  const phones = SITE_CONFIG.mobiles || [];
+  const logoUrl = settingsCache.logoUrl !== undefined ? settingsCache.logoUrl : SITE_CONFIG.logoUrl;
+  const heroUrl = settingsCache.heroImageUrl !== undefined ? settingsCache.heroImageUrl : SITE_CONFIG.heroImageUrl;
+  return `
     <div class="form-card" style="max-width:720px;">
+      <h3 style="margin-top:0;">🏷️ ওয়েবসাইট তথ্য</h3>
       <form id="settings-form">
         <fieldset>
-          <legend>🏷️ ওয়েবসাইটের পরিচয়</legend>
+          <legend>ওয়েবসাইটের পরিচয়</legend>
           <div class="form-row">
-            <div class="form-group"><label>ওয়েবসাইটের নাম (বাংলা) *</label><input type="text" name="siteNameBn" required value="${val('siteNameBn', SITE_CONFIG.groupNameBn)}"></div>
-            <div class="form-group"><label>ওয়েবসাইটের নাম (ইংরেজি) *</label><input type="text" name="siteNameEn" required value="${val('siteNameEn', SITE_CONFIG.groupNameEn)}"></div>
+            <div class="form-group"><label>ওয়েবসাইটের নাম (বাংলা) *</label><input type="text" name="siteNameBn" required value="${sv('siteNameBn', SITE_CONFIG.groupNameBn)}"></div>
+            <div class="form-group"><label>ওয়েবসাইটের নাম (ইংরেজি) *</label><input type="text" name="siteNameEn" required value="${sv('siteNameEn', SITE_CONFIG.groupNameEn)}"></div>
           </div>
-          <div class="form-group"><label>ট্যাগলাইন</label><input type="text" name="tagline" value="${val('tagline', SITE_CONFIG.tagline)}"></div>
+          <div class="form-group"><label>ট্যাগলাইন</label><input type="text" name="tagline" value="${sv('tagline', SITE_CONFIG.tagline)}"></div>
         </fieldset>
-
         <fieldset>
-          <legend>📞 যোগাযোগ</legend>
-          <div class="form-group"><label>ঠিকানা</label><input type="text" name="address" value="${val('address', SITE_CONFIG.address)}"></div>
+          <legend>যোগাযোগ</legend>
+          <div class="form-group"><label>ঠিকানা</label><input type="text" name="address" value="${sv('address', SITE_CONFIG.address)}"></div>
           <div class="form-row">
-            <div class="form-group"><label>মোবাইল নং ১</label><input type="tel" name="mobile1" placeholder="01XXXXXXXXX" value="${val('mobile1', phones[0])}"></div>
-            <div class="form-group"><label>মোবাইল নং ২</label><input type="tel" name="mobile2" placeholder="01XXXXXXXXX" value="${val('mobile2', phones[1])}"></div>
+            <div class="form-group"><label>মোবাইল নং ১</label><input type="tel" name="mobile1" placeholder="01XXXXXXXXX" value="${sv('mobile1', phones[0])}"></div>
+            <div class="form-group"><label>মোবাইল নং ২</label><input type="tel" name="mobile2" placeholder="01XXXXXXXXX" value="${sv('mobile2', phones[1])}"></div>
           </div>
           <div class="form-row">
-            <div class="form-group"><label>মোবাইল নং ৩</label><input type="tel" name="mobile3" placeholder="01XXXXXXXXX" value="${val('mobile3', phones[2])}"></div>
-            <div class="form-group"><label>ইমেইল</label><input type="email" name="email" placeholder="name@example.com" value="${val('email', SITE_CONFIG.email)}"></div>
+            <div class="form-group"><label>মোবাইল নং ৩</label><input type="tel" name="mobile3" placeholder="01XXXXXXXXX" value="${sv('mobile3', phones[2])}"></div>
+            <div class="form-group"><label>ইমেইল</label><input type="email" name="email" placeholder="name@example.com" value="${sv('email', SITE_CONFIG.email)}"></div>
           </div>
         </fieldset>
-
         <fieldset>
-          <legend>🖼️ লোগো ও হিরো ছবি</legend>
+          <legend>লোগো ও হিরো ছবি</legend>
           <div class="form-group">
             <label>লোগো</label>
-            <div class="photo-box" id="st-logo-box">
+            <div class="photo-box">
               <img id="st-logo-preview" style="display:${logoUrl ? 'block' : 'none'};" ${logoUrl ? `src="${escapeHtml(logoUrl)}"` : ''}>
               <span id="st-logo-placeholder" style="display:${logoUrl ? 'none' : ''};">🧳</span>
             </div>
@@ -1253,38 +1319,25 @@ async function renderSettingsTab() {
           </div>
           <div class="form-group">
             <label>হোমপেজ হিরো সেকশনের ছবি</label>
-            <div class="hero-preview" id="st-hero-box">
+            <div class="hero-preview">
               <img id="st-hero-preview" style="display:${heroUrl ? 'block' : 'none'};" ${heroUrl ? `src="${escapeHtml(heroUrl)}"` : ''}>
               <span id="st-hero-placeholder" style="display:${heroUrl ? 'none' : ''};">কোনো ছবি নেই</span>
             </div>
             <input type="file" id="st-hero-input" accept="image/*" style="margin-top:8px;">
             <button type="button" class="btn btn-sm btn-outline-forest" id="st-hero-clear" style="margin-top:8px;">ছবি সরান</button>
-            <div class="hint">চওড়া (ল্যান্ডস্কেপ) ছবি দিন। ছবির উপর হালকা গাঢ় আস্তরণ থাকবে যাতে লেখা পড়া যায়।</div>
+            <div class="hint">চওড়া (ল্যান্ডস্কেপ) ছবি দিন।</div>
           </div>
         </fieldset>
-
-        <fieldset>
-          <legend>🔗 সোশ্যাল মিডিয়া লিংক</legend>
-          <div class="form-row">
-            <div class="form-group"><label>Facebook</label><input type="url" name="facebookUrl" placeholder="https://..." value="${val('facebookUrl', SITE_CONFIG.facebookUrl)}"></div>
-            <div class="form-group"><label>YouTube</label><input type="url" name="youtubeUrl" placeholder="https://..." value="${val('youtubeUrl', SITE_CONFIG.youtubeUrl)}"></div>
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label>Instagram</label><input type="url" name="instagramUrl" placeholder="https://..." value="${val('instagramUrl', SITE_CONFIG.instagramUrl)}"></div>
-            <div class="form-group"><label>TikTok</label><input type="url" name="tiktokUrl" placeholder="https://..." value="${val('tiktokUrl', SITE_CONFIG.tiktokUrl)}"></div>
-          </div>
-        </fieldset>
-
         <button type="submit" class="btn btn-primary btn-block" id="settings-submit-btn">সংরক্ষণ করুন</button>
       </form>
-    </div>
-  `;
+    </div>`;
+}
 
+function wireSitePanel() {
   qs('#st-logo-input').addEventListener('change', async (e) => {
     const file = e.target.files[0]; if (!file) return;
     try {
       settingsImages.logo = await resizeImageFile(file, 512, true);
-      settingsImages.clearLogo = false;
       qs('#st-logo-preview').src = settingsImages.logo.dataUrl;
       qs('#st-logo-preview').style.display = 'block';
       qs('#st-logo-placeholder').style.display = 'none';
@@ -1306,44 +1359,204 @@ async function renderSettingsTab() {
     qs('#st-hero-preview').style.display = 'none';
     qs('#st-hero-placeholder').style.display = '';
   });
-  qs('#settings-form').addEventListener('submit', submitSettings);
+  qs('#settings-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = qs('#settings-submit-btn');
+    btn.disabled = true; btn.textContent = 'সংরক্ষণ হচ্ছে...';
+    const fd = new FormData(e.target);
+    const values = {};
+    ['siteNameBn','siteNameEn','tagline','address','mobile1','mobile2','mobile3','email'].forEach(k => { values[k] = (fd.get(k) || '').toString().trim(); });
+    if (settingsImages.clearHero) values.heroImageUrl = '';
+    const payload = { values };
+    if (settingsImages.logo) { payload.logoBase64 = settingsImages.logo.base64; payload.logoMimeType = settingsImages.logo.mime; payload.logoFileName = settingsImages.logo.name; }
+    if (settingsImages.hero) { payload.heroBase64 = settingsImages.hero.base64; payload.heroMimeType = settingsImages.hero.mime; payload.heroFileName = settingsImages.hero.name; }
+    try {
+      await persistSettings(payload);
+      settingsImages = { logo: null, hero: null, clearLogo: false, clearHero: false };
+      showToast('ওয়েবসাইটের তথ্য সংরক্ষিত হয়েছে', 'success');
+      closePanel('site');
+    } catch (err) {
+      showToast('ত্রুটি: ' + err.message, 'error');
+      btn.disabled = false; btn.textContent = 'সংরক্ষণ করুন';
+    }
+  });
 }
 
-async function submitSettings(e) {
-  e.preventDefault();
-  const btn = qs('#settings-submit-btn');
-  btn.disabled = true; btn.textContent = 'সংরক্ষণ হচ্ছে...';
-  const fd = new FormData(e.target);
-  const settings = {};
-  ['siteNameBn','siteNameEn','tagline','address','mobile1','mobile2','mobile3','email','facebookUrl','youtubeUrl','instagramUrl','tiktokUrl']
-    .forEach(k => { settings[k] = (fd.get(k) || '').toString().trim(); });
-  if (settingsImages.clearHero) settings.heroImageUrl = '';
+// ---------- ২. সোশ্যাল লিংক ----------
 
-  const payload = { values: settings };
-  if (settingsImages.logo) {
-    payload.logoBase64 = settingsImages.logo.base64;
-    payload.logoMimeType = settingsImages.logo.mime;
-    payload.logoFileName = settingsImages.logo.name;
-  }
-  if (settingsImages.hero) {
-    payload.heroBase64 = settingsImages.hero.base64;
-    payload.heroMimeType = settingsImages.hero.mime;
-    payload.heroFileName = settingsImages.hero.name;
-  }
+function renderSocialPanel() {
+  return `
+    <div class="form-card" style="max-width:720px;">
+      <h3 style="margin-top:0;">🔗 সোশ্যাল লিংক</h3>
+      <p class="text-muted" style="margin-top:0;">যেগুলোতে লিংক দেবেন শুধু সেগুলোর আইকন ফুটারে দেখাবে। ফাঁকা রাখলে আইকন দেখাবে না।</p>
+      <form id="social-form">
+        <div class="form-row">
+          <div class="form-group"><label>Facebook</label><input type="url" name="facebookUrl" placeholder="https://..." value="${sv('facebookUrl', SITE_CONFIG.facebookUrl)}"></div>
+          <div class="form-group"><label>YouTube</label><input type="url" name="youtubeUrl" placeholder="https://..." value="${sv('youtubeUrl', SITE_CONFIG.youtubeUrl)}"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>TikTok</label><input type="url" name="tiktokUrl" placeholder="https://..." value="${sv('tiktokUrl', SITE_CONFIG.tiktokUrl)}"></div>
+          <div class="form-group"><label>Instagram</label><input type="url" name="instagramUrl" placeholder="https://..." value="${sv('instagramUrl', SITE_CONFIG.instagramUrl)}"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="social-submit-btn">সংরক্ষণ করুন</button>
+      </form>
+    </div>`;
+}
 
-  try {
-    const res = await apiPost('saveSettings', payload);
-    if (!res.ok) throw new Error(res.error || 'ব্যর্থ হয়েছে');
-    try { localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(res.data)); } catch (e) {}
-    if (settingsImages.clearHero) SITE_CONFIG.heroImageUrl = '';
-    applySettings(res.data);
-    renderAllSiteInfo();
-    showToast('ওয়েবসাইটের তথ্য সংরক্ষিত হয়েছে', 'success');
-    renderSettingsTab();
-  } catch (err) {
-    showToast('ত্রুটি: ' + err.message, 'error');
-    btn.disabled = false; btn.textContent = 'সংরক্ষণ করুন';
-  }
+function wireSocialPanel() {
+  qs('#social-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = qs('#social-submit-btn');
+    btn.disabled = true; btn.textContent = 'সংরক্ষণ হচ্ছে...';
+    const fd = new FormData(e.target);
+    const values = {};
+    ['facebookUrl','youtubeUrl','tiktokUrl','instagramUrl'].forEach(k => { values[k] = (fd.get(k) || '').toString().trim(); });
+    try {
+      await persistSettings({ values });
+      showToast('সোশ্যাল লিংক সংরক্ষিত হয়েছে', 'success');
+      closePanel('social');
+    } catch (err) {
+      showToast('ত্রুটি: ' + err.message, 'error');
+      btn.disabled = false; btn.textContent = 'সংরক্ষণ করুন';
+    }
+  });
+}
+
+// ---------- ৩. ব্যাংকিং তথ্য ----------
+
+let pmEditId = null;
+
+function getPayMethods() {
+  try { const a = JSON.parse(settingsCache.paymentMethods || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
+
+function pmSummary(m) {
+  if (m.kind === 'mobile') return `📱 <strong>${escapeHtml(m.name)}</strong> (${escapeHtml(m.mmType || '')}) — ${escapeHtml(m.number)}${m.holder ? ' · ' + escapeHtml(m.holder) : ''}${m.note ? ' · ' + escapeHtml(m.note) : ''}`;
+  return `🏦 <strong>${escapeHtml(m.bankName)}</strong> — ${escapeHtml(m.accountName || '')} · A/C ${escapeHtml(m.accountNo)}${m.branch ? ' · ' + escapeHtml(m.branch) : ''}`;
+}
+
+function pmFieldsHtml(kind, m) {
+  m = m || {};
+  const v = k => escapeHtml(m[k] || '');
+  if (kind === 'mobile') return `
+    <div class="form-row">
+      <div class="form-group"><label>ধরণ *</label>
+        <select name="mmType" required>
+          ${['পার্সোনাল', 'এজেন্ট', 'মার্চেন্ট', 'পেমেন্ট'].map(t => `<option value="${t}" ${m.mmType === t ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>মাধ্যমের নাম *</label><input type="text" name="name" required placeholder="যেমন: বিকাশ, নগদ, রকেট" value="${v('name')}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>মোবাইল নং *</label><input type="tel" name="number" required placeholder="01XXXXXXXXX" value="${v('number')}"></div>
+      <div class="form-group"><label>অ্যাকাউন্টধারীর নাম *</label><input type="text" name="holder" required value="${v('holder')}"></div>
+    </div>
+    <div class="form-group"><label>নোট</label><input type="text" name="note" placeholder="যেমন: শুধু সেন্ড মানি করুন" value="${v('note')}"></div>`;
+  if (kind === 'bank') return `
+    <div class="form-row">
+      <div class="form-group"><label>ব্যাংকের নাম *</label><input type="text" name="bankName" required value="${v('bankName')}"></div>
+      <div class="form-group"><label>একাউন্টের নাম *</label><input type="text" name="accountName" required value="${v('accountName')}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>একাউন্ট নং *</label><input type="text" name="accountNo" required value="${v('accountNo')}"></div>
+      <div class="form-group"><label>শাখা *</label><input type="text" name="branch" required value="${v('branch')}"></div>
+    </div>`;
+  return '';
+}
+
+function renderBankPanel() {
+  pmEditId = null;
+  const list = getPayMethods();
+  return `
+    <div class="form-card" style="max-width:720px;">
+      <h3 style="margin-top:0;">🏦 ব্যাংকিং তথ্য</h3>
+      <p class="text-muted" style="margin-top:0;">এখানে যেগুলো যোগ করবেন, বুকিংয়ের পেমেন্ট ফরমে শুধু সেগুলোই দেখাবে।</p>
+      <div class="pm-list" id="pm-list">${pmListHtml(list)}</div>
+      <form id="pm-form">
+        <h4 id="pm-form-title" style="margin:0 0 10px;">➕ নতুন পেমেন্ট মাধ্যম যোগ করুন</h4>
+        <div class="form-group"><label>পেমেন্টের ধরন *</label>
+          <select id="pm-kind" required>
+            <option value="">-- নির্বাচন করুন --</option>
+            <option value="mobile">মোবাইল ব্যাংকিং</option>
+            <option value="bank">ব্যাংকিং</option>
+          </select>
+        </div>
+        <div id="pm-fields"></div>
+        <div class="flex-between">
+          <button type="submit" class="btn btn-primary" id="pm-submit-btn" style="display:none;">যোগ করুন</button>
+          <button type="button" class="btn btn-outline-forest" id="pm-cancel-btn" style="display:none;">বাতিল</button>
+        </div>
+      </form>
+    </div>`;
+}
+
+function pmListHtml(list) {
+  if (!list.length) return '<div class="text-muted">এখনো কিছু যোগ করা হয়নি।</div>';
+  return list.map(m => `
+    <div class="pm-item"><div>${pmSummary(m)}</div>
+      <div class="pm-actions">
+        <button type="button" class="btn btn-sm btn-forest pm-edit" data-id="${escapeHtml(m.id)}">✏️</button>
+        <button type="button" class="btn btn-sm btn-danger pm-del" data-id="${escapeHtml(m.id)}">✕</button>
+      </div>
+    </div>`).join('');
+}
+
+function wireBankPanel() {
+  const kindSel = qs('#pm-kind');
+  const resetForm = () => {
+    pmEditId = null;
+    kindSel.value = ''; kindSel.disabled = false;
+    qs('#pm-fields').innerHTML = '';
+    qs('#pm-submit-btn').style.display = 'none';
+    qs('#pm-cancel-btn').style.display = 'none';
+    qs('#pm-form-title').textContent = '➕ নতুন পেমেন্ট মাধ্যম যোগ করুন';
+  };
+  const showFields = (kind, item) => {
+    qs('#pm-fields').innerHTML = pmFieldsHtml(kind, item);
+    qs('#pm-submit-btn').style.display = kind ? '' : 'none';
+    qs('#pm-cancel-btn').style.display = kind ? '' : 'none';
+    qs('#pm-submit-btn').textContent = pmEditId ? 'আপডেট করুন' : 'যোগ করুন';
+  };
+  kindSel.addEventListener('change', () => showFields(kindSel.value, null));
+  qs('#pm-cancel-btn').addEventListener('click', resetForm);
+
+  const refreshList = () => { qs('#pm-list').innerHTML = pmListHtml(getPayMethods()); bindListButtons(); };
+  const savePayMethods = async (arr) => {
+    await persistSettings({ values: { paymentMethods: JSON.stringify(arr) } });
+    refreshList();
+  };
+  const bindListButtons = () => {
+    qsa('.pm-edit').forEach(b => b.addEventListener('click', () => {
+      const m = getPayMethods().find(x => x.id === b.dataset.id); if (!m) return;
+      pmEditId = m.id;
+      kindSel.value = m.kind; kindSel.disabled = true;
+      qs('#pm-form-title').textContent = '✏️ সম্পাদনা করুন';
+      showFields(m.kind, m);
+      qs('#pm-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }));
+    qsa('.pm-del').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('এটি মুছে ফেলতে চান?')) return;
+      try { await savePayMethods(getPayMethods().filter(x => x.id !== b.dataset.id)); showToast('মুছে ফেলা হয়েছে', 'success'); resetForm(); }
+      catch (err) { showToast('ত্রুটি: ' + err.message, 'error'); }
+    }));
+  };
+  bindListButtons();
+
+  qs('#pm-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const kind = kindSel.value; if (!kind) return;
+    const fd = new FormData(e.target);
+    const item = { id: pmEditId || ('pm' + Date.now()), kind };
+    (kind === 'mobile' ? ['mmType', 'name', 'number', 'holder', 'note'] : ['bankName', 'accountName', 'accountNo', 'branch'])
+      .forEach(k => { item[k] = (fd.get(k) || '').toString().trim(); });
+    const list = getPayMethods();
+    const idx = list.findIndex(x => x.id === item.id);
+    if (idx >= 0) list[idx] = item; else list.push(item);
+    const btn = qs('#pm-submit-btn'); btn.disabled = true;
+    try { await savePayMethods(list); showToast('সংরক্ষিত হয়েছে', 'success'); resetForm(); }
+    catch (err) { showToast('ত্রুটি: ' + err.message, 'error'); }
+    btn.disabled = false;
+  });
 }
 
 checkSession();
