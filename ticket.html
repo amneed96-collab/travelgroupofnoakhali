@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>আমার টিকেট</title>
+<link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@600;700&family=Hind+Siliguri:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -90,7 +91,7 @@ qs('#search-form').addEventListener('submit', async (e) => {
 
 function renderTicket(b) {
   const seatList = (b.seats || []).map(s => s.vehicleName + '-' + s.seatNo).join(', ');
-  const logoImg = SITE_CONFIG.logoUrl ? `<img src="${escapeHtml(SITE_CONFIG.logoUrl)}" class="ticket-logo" alt="logo">` : '';
+  const logoImg = SITE_CONFIG.logoUrl ? `<img src="${escapeHtml(imgUrl(SITE_CONFIG.logoUrl, 200))}" class="ticket-logo" alt="logo">` : '';
   return `
     <div class="ticket-card">
       <div class="ticket-header">

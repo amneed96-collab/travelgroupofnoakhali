@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>বুকিং ফরম</title>
+<link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@600;700&family=Hind+Siliguri:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -56,23 +57,35 @@ function parsePayMethods(settings) {
   catch (e) { return []; }
 }
 
+function applyPackageData(d, fromCache) {
+  currentPackage = d.package;
+  currentSeats = d.seats;
+  if (!qs('#booking-form')) { render(); initResume(); return; }
+  // ইতিমধ্যে ফরম দেখানো হচ্ছে: ব্যবহারকারীর নির্বাচন না মুছে শুধু সীটের অবস্থা হালনাগাদ
+  selectedSeats = selectedSeats.filter(sel => currentSeats.some(s => s.vehicleName === sel.vehicleName && s.seatNo === sel.seatNo && s.status === 'available'));
+  renderVehicles();
+  qs('#seat-count').textContent = toBengaliNumber(selectedSeats.length);
+  qs('#selected-seat-display').textContent = selectedSeats.length === 0 ? 'বামপাশ থেকে সীট বেছে নিন' : selectedSeats.map(s => `${s.vehicleName}-${s.seatNo}`).join(', ');
+  qs('#fee-display').value = formatTaka(totalFee());
+  const btn = qs('#submit-btn');
+  btn.disabled = selectedSeats.length === 0;
+  btn.textContent = selectedSeats.length === 0 ? 'সীট নির্বাচন করুন' : `বুকিং তথ্য জমা দিন (${toBengaliNumber(selectedSeats.length)}টি সীট)`;
+}
+
 async function init() {
   const content = qs('#page-content');
   if (!pkgIdentifier) {
     content.innerHTML = '<div class="empty-state">কোনো প্যাকেজ নির্বাচিত নেই। <a href="index.html">প্যাকেজ তালিকায় ফিরে যান</a></div>';
     return;
   }
+  // পেমেন্ট মাধ্যম আলাদা কলে (ক্যাশ থাকলে সাথে সাথে), প্যাকেজ+সীট আগের ডেটা দেখিয়ে পরে হালনাগাদ
+  apiGetSWR('getSettings', null, (res) => { if (res.ok) payMethods = parsePayMethods(res.data); }).catch(() => {});
   try {
-    const [res, setRes] = await Promise.all([
-      apiGet('getPackageFull', { id: pkgIdentifier }, { noCache: true }),
-      apiGet('getSettings', null, { noCache: true }).catch(() => ({ ok: false }))
-    ]);
-    if (!res.ok || !res.data || !res.data.package) throw new Error('প্যাকেজ পাওয়া যায়নি');
-    currentPackage = res.data.package;
-    currentSeats = res.data.seats;
-    payMethods = setRes && setRes.ok ? parsePayMethods(setRes.data) : [];
-    render();
-    initResume();
+    await apiGetSWR('getPackageFull', { id: pkgIdentifier }, (res, fromCache) => {
+      if (!res.ok || !res.data || !res.data.package) { if (!fromCache) throw new Error('প্যাকেজ পাওয়া যায়নি'); return; }
+      if (qs('#pay-form')) return; // পেমেন্ট ধাপে থাকলে ডিস্টার্ব করা হবে না
+      applyPackageData(res.data, fromCache);
+    });
   } catch (err) {
     content.innerHTML = '<div class="empty-state">লোড করতে সমস্যা: ' + err.message + '</div>';
   }
@@ -364,12 +377,12 @@ function showPaymentView(b, justBooked) {
       <h2 style="margin-top:0;">${escapeHtml(currentPackage.spotName)}</h2>
       ${justBooked ? `<div class="pay-info-box" style="border-style:solid;">✅ আপনার বুকিং তথ্য জমা হয়েছে এবং সীট আপনার নামে ধরে রাখা হয়েছে। এখন পেমেন্ট সম্পন্ন করুন। এখন না পারলে পরে এই পেজে <strong>"আগে বুকিং দিয়েছেন কিন্তু পেমেন্ট বাকি?"</strong> অংশে মোবাইল নম্বর দিয়ে ফিরে আসতে পারবেন।</div>` : ''}
       <div class="pay-summary">
-        <div class="row"><span>ক্রম নং</span><strong>${toBengaliNumber(b.serial)}</strong></div>
-        <div class="row"><span>নাম</span><strong>${escapeHtml(b.name)}</strong></div>
-        <div class="row"><span>সীট</span><strong>${escapeHtml(seatText)}</strong></div>
-        <div class="row"><span>মোট ফি</span><strong>${formatTaka(b.delegateFee)}</strong></div>
-        <div class="row"><span>এ পর্যন্ত জমা</span><strong>${formatTaka(b.paidAmount)}</strong></div>
-        <div class="row"><span>বকেয়া</span><strong style="color:var(--red);">${formatTaka(due)}</strong></div>
+        <div class="row"><span>ক্রম নং</span><span class="colon">:</span><strong>${toBengaliNumber(b.serial)}</strong></div>
+        <div class="row"><span>নাম</span><span class="colon">:</span><strong>${escapeHtml(b.name)}</strong></div>
+        <div class="row"><span>সীট</span><span class="colon">:</span><strong>${escapeHtml(seatText)}</strong></div>
+        <div class="row"><span>মোট ফি</span><span class="colon">:</span><strong>${formatTaka(b.delegateFee)}</strong></div>
+        <div class="row"><span>এ পর্যন্ত জমা</span><span class="colon">:</span><strong>${formatTaka(b.paidAmount)}</strong></div>
+        <div class="row"><span>বকেয়া</span><span class="colon">:</span><strong style="color:var(--red);">${formatTaka(due)}</strong></div>
       </div>
       <div class="form-card">
         <form id="pay-form">

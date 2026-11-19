@@ -2,6 +2,15 @@
 // API হেল্পার - Google Apps Script ব্যাকএন্ডের সাথে যোগাযোগ (ক্যাশিং সহ, ফাস্ট)
 // ============================================================
 
+// Google Drive/Photos ছবির ছোট সাইজ চেয়ে নেওয়া (পেজ দ্রুত লোডের জন্য)
+function imgUrl(url, size) {
+  if (!url) return url;
+  const u = String(url);
+  if (u.indexOf('googleusercontent.com/d/') >= 0 && u.indexOf('=') < 0) return u + '=w' + size;
+  if (u.indexOf('drive.google.com/thumbnail') >= 0) return u.replace(/sz=w\d+/, 'sz=w' + size);
+  return u;
+}
+
 const _cache = new Map();
 const _inflight = new Map();
 const CACHE_TTL_MS = 20000; // ২০ সেকেন্ড ক্যাশ - বারবার একই ডেটা আনতে দেরি হবে না
@@ -211,7 +220,7 @@ function renderHeroImage() {
   const hero = qs('.hero');
   if (!hero || !SITE_CONFIG.heroImageUrl) return;
   hero.style.backgroundImage =
-    `linear-gradient(180deg, rgba(37,116,84,0.72), rgba(37,116,84,0.84)), url("${SITE_CONFIG.heroImageUrl}")`;
+    `linear-gradient(180deg, rgba(0,0,0,0.12), rgba(37,116,84,0.55)), url("${imgUrl(SITE_CONFIG.heroImageUrl, 1600)}")`;
   hero.style.backgroundSize = 'cover';
   hero.style.backgroundPosition = 'center';
 }
@@ -250,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function renderBrandLogos() {
   if (!SITE_CONFIG.logoUrl) return;
   qsa('.brand-mark').forEach(el => {
-    el.innerHTML = `<img src="${escapeHtml(SITE_CONFIG.logoUrl)}" alt="logo">`;
+    el.innerHTML = `<img src="${escapeHtml(imgUrl(SITE_CONFIG.logoUrl, 200))}" alt="logo" decoding="async">`;
   });
 }
 

@@ -51,7 +51,7 @@ function sheetToObjects(sheet) {
 // ---------- রেসপন্স ক্যাশ (CacheService) ----------
 // পাবলিক GET রিকোয়েস্টের ফলাফল কিছুক্ষণ ক্যাশে থাকে। যেকোনো লেখার কাজ (POST) হলে ভার্সন বদলে সব ক্যাশ বাতিল হয়।
 // শীটে সরাসরি হাতে এডিট করলে সর্বোচ্চ CACHE_TTL_SEC সেকেন্ড পর নতুন ডেটা দেখা যাবে।
-const CACHE_TTL_SEC = 120;
+const CACHE_TTL_SEC = 300;
 const CACHEABLE_ACTIONS = ['getPackagesSummary', 'getPackages', 'getPackage', 'getPackageFull',
   'getPackageCounts', 'getTeamContacts', 'getAdminNames', 'getSettings', 'getBootstrap'];
 
@@ -115,7 +115,7 @@ function doGet(e) {
   if (cacheable) {
     cacheKey = 'r|' + cacheVersion() + '|' + action + '|' + (e.parameter.id || e.parameter.packageId || '');
     try {
-      const hit = CacheService.getScriptCache().get(cacheKey);
+      const hit = e.parameter._warm ? null : CacheService.getScriptCache().get(cacheKey);
       if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
     } catch (err) {}
   }
@@ -1064,4 +1064,25 @@ function submitPayment(body) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ---------- ক্যাশ গরম রাখা (সাইট দ্রুত রাখতে) ----------
+// প্রতি ৫ মিনিটে হোমপেজ ও প্যাকেজের ডেটা ক্যাশে নতুন করে রাখে, তাই ভিজিটর প্রায় সবসময় ক্যাশ থেকে দ্রুত ডেটা পায়।
+function warmCache() {
+  ['getBootstrap', 'getPackagesSummary', 'getSettings', 'getTeamContacts', 'getAdminNames'].forEach(a => {
+    try { doGet({ parameter: { action: a, _warm: '1' } }); } catch (err) {}
+  });
+  try {
+    getPackages().filter(p => p.status === 'active').forEach(p => {
+      doGet({ parameter: { action: 'getPackageFull', id: p.slug || p.id, _warm: '1' } });
+    });
+  } catch (err) {}
+}
+
+// একবার Run করুন: প্রতি ৫ মিনিটে warmCache চলবে (আগের ট্রিগার মুছে নতুন বানায়)
+function setupWarmTrigger() {
+  ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === 'warmCache') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('warmCache').timeBased().everyMinutes(5).create();
+  warmCache();
+  return 'প্রতি ৫ মিনিটের ট্রিগার চালু হয়েছে';
 }
