@@ -132,6 +132,9 @@ function doGet(e) {
 
 function handleGet(e) {
   const action = e.parameter.action;
+  if (['getPackageFull', 'getSeats', 'getPackagesSummary', 'getBootstrap', 'findMyBookings'].indexOf(action) >= 0) {
+    try { expireUnpaidBookings(); } catch (err) {}
+  }
   try {
     switch (action) {
       case 'findMyBookings':
@@ -724,6 +727,8 @@ function getBookings(packageId) {
 
 // body.seats = [{vehicleName, seatNo}, ...]  একাধিক সীট একসাথে বুক করা যাবে
 function createBooking(body) {
+  expireUnpaidBookings(); // মেয়াদ শেষ হওয়া বুকিংয়ের সীট আগে ছাড়া
+  const createdAt = new Date().toISOString();
   const seatSheet = getSheet(SHEET_NAMES.SEATS);
   const seatData = seatSheet.getDataRange().getValues();
   const seatHeaders = seatData[0];
@@ -757,7 +762,7 @@ function createBooking(body) {
   bookingSheet.appendRow([
     id, body.packageId, serial, body.date, body.name, "'" + String(body.mobile), body.address,
     JSON.stringify(requestedSeats), totalFee, paidAmount, dueAmount,
-    'pending', new Date().toISOString(), '', '', body.paymentMethod || '', body.transactionId || '', body.receivedBy || ''
+    'pending', createdAt, '', '', body.paymentMethod || '', body.transactionId || '', body.receivedBy || ''
   ]);
 
   rowIndexes.forEach(rowIndex => {
@@ -766,7 +771,7 @@ function createBooking(body) {
   });
 
   SpreadsheetApp.flush();
-  return { ok: true, data: { id, serial, dueAmount, seatCount: requestedSeats.length, totalFee } };
+  return { ok: true, data: { id, serial, dueAmount, seatCount: requestedSeats.length, totalFee, createdAt } };
 }
 
 function confirmBooking(bookingId, confirmedBy) {
@@ -992,7 +997,7 @@ function findMyBookings(packageId, mobile) {
     .filter(b => b.status !== 'cancelled' && normMobile(b.mobile) === m && Number(b.dueAmount) > 0)
     .map(b => ({
       id: b.id, serial: b.serial, name: b.name, mobile: normMobile(b.mobile), seats: b.seats,
-      delegateFee: b.delegateFee, paidAmount: b.paidAmount, dueAmount: b.dueAmount, status: b.status
+      delegateFee: b.delegateFee, paidAmount: b.paidAmount, dueAmount: b.dueAmount, status: b.status, createdAt: b.createdAt
     }));
 }
 
@@ -1019,7 +1024,7 @@ function submitPayment(body) {
       if (normMobile(data[i][headers.indexOf('mobile')]) !== normMobile(body.mobile)) {
         return { ok: false, error: 'মোবাইল নম্বর মেলেনি' };
       }
-      if (data[i][headers.indexOf('status')] === 'cancelled') return { ok: false, error: 'এই বুকিংটি বাতিল হয়ে গেছে' };
+      if (data[i][headers.indexOf('status')] === 'cancelled') return { ok: false, error: 'এই বুকিংটি বাতিল হয়ে গেছে (পেমেন্ট না করায় ' + UNPAID_HOLD_MINUTES + ' মিনিট পর স্বয়ংক্রিয়ভাবে বাতিল হয়)। অনুগ্রহ করে নতুন করে বুকিং দিন।' };
 
       const fee = Number(data[i][headers.indexOf('delegateFee')]) || 0;
       const paid = Number(data[i][headers.indexOf('paidAmount')]) || 0;
@@ -1082,7 +1087,62 @@ function warmCache() {
 // একবার Run করুন: প্রতি ৫ মিনিটে warmCache চলবে (আগের ট্রিগার মুছে নতুন বানায়)
 function setupWarmTrigger() {
   ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === 'warmCache') ScriptApp.deleteTrigger(t); });
+  ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === 'expireUnpaidBookings') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('warmCache').timeBased().everyMinutes(5).create();
+  ScriptApp.newTrigger('expireUnpaidBookings').timeBased().everyMinutes(5).create();
   warmCache();
-  return 'প্রতি ৫ মিনিটের ট্রিগার চালু হয়েছে';
+  return 'ক্যাশ-গরম ও অপরিশোধিত বুকিং বাতিলের ট্রিগার (প্রতি ৫ মিনিট) চালু হয়েছে';
+}
+
+// ---------- অপরিশোধিত বুকিং স্বয়ংক্রিয় বাতিল ----------
+// বুকিং দেওয়ার পর UNPAID_HOLD_MINUTES মিনিটের মধ্যে কোনো পেমেন্ট তথ্য জমা না দিলে বুকিং বাতিল হয়ে সীট খালি হয়।
+// (একবার পেমেন্ট তথ্য জমা দিলে আর স্বয়ংক্রিয়ভাবে বাতিল হয় না, এডমিন যাচাই করবেন।)
+const UNPAID_HOLD_MINUTES = 30;
+
+function expireUnpaidBookings() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return 0;
+  let count = 0;
+  try {
+    const sheet = getSheet(SHEET_NAMES.BOOKINGS);
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return 0;
+    const h = data[0];
+    const iId = h.indexOf('id'), iPkg = h.indexOf('packageId'), iStatus = h.indexOf('status'),
+          iPaid = h.indexOf('paidAmount'), iSeats = h.indexOf('seatsJson'), iCreated = h.indexOf('createdAt'),
+          iInfo = h.indexOf('paymentInfo');
+    const now = new Date().getTime();
+    const limit = UNPAID_HOLD_MINUTES * 60 * 1000;
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row[iStatus] !== 'pending') continue;
+      if ((Number(row[iPaid]) || 0) > 0) continue;
+      if (iInfo >= 0 && row[iInfo] && String(row[iInfo]) !== '[]') continue;
+      const created = new Date(row[iCreated]).getTime();
+      if (!created || now - created < limit) continue;
+
+      sheet.getRange(i + 1, iStatus + 1).setValue('cancelled');
+      let seats = [];
+      try { seats = JSON.parse(row[iSeats] || '[]'); } catch (err) {}
+      seats.forEach(s => releaseSeatIfOwned(row[iPkg], s.vehicleName, s.seatNo, row[iId]));
+      count++;
+    }
+    if (count > 0) { SpreadsheetApp.flush(); bumpCacheVersion(); }
+  } finally {
+    lock.releaseLock();
+  }
+  return count;
+}
+
+// সীটটি এই বুকিংয়ের নামে ধরা থাকলেই খালি করে
+function releaseSeatIfOwned(packageId, vehicleName, seatNo, bookingId) {
+  const sheet = getSheet(SHEET_NAMES.SEATS);
+  const data = sheet.getDataRange().getValues();
+  const h = data[0];
+  const rowIndex = findSeatRow(sheet, data, h, packageId, vehicleName, seatNo);
+  if (!rowIndex) return;
+  if (data[rowIndex - 1][h.indexOf('bookingId')] !== bookingId) return;
+  sheet.getRange(rowIndex, h.indexOf('status') + 1).setValue('available');
+  sheet.getRange(rowIndex, h.indexOf('bookingId') + 1).setValue('');
+  sheet.getRange(rowIndex, h.indexOf('holdNote') + 1).setValue('');
 }

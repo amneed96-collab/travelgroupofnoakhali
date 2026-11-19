@@ -136,7 +136,7 @@ function render() {
               <div id="selected-seat-display" style="min-height:44px; background:var(--cream-dark); border-radius:9px; padding:10px 14px; font-weight:700; color:var(--forest);">বামপাশ থেকে সীট বেছে নিন</div>
             </div>
             <div class="form-group"><label>মোট ডেলিগেট ফি</label><input type="text" id="fee-display" readonly value="${formatTaka(0)}" style="background:var(--cream-dark); font-weight:700;"></div>
-            <div class="hint" style="margin-bottom:14px;">বুকিং তথ্য জমা দেওয়ার পর পরের ধাপে পেমেন্ট করতে হবে।</div>
+            <div class="hint" style="margin-bottom:14px;">বুকিং তথ্য জমা দেওয়ার পর পরের ধাপে পেমেন্ট করতে হবে। <strong>৩০ মিনিটের মধ্যে পেমেন্ট তথ্য জমা না দিলে বুকিং স্বয়ংক্রিয়ভাবে বাতিল হয়ে সীট খালি হয়ে যাবে।</strong></div>
             <button type="submit" class="btn btn-primary btn-block" id="submit-btn" disabled>সীট নির্বাচন করুন</button>
           </form>
         </div>
@@ -291,7 +291,7 @@ async function submitBooking(e) {
     try { localStorage.setItem(SAVED_MOBILE_KEY, fd.get('mobile')); } catch (err) {}
     showPaymentView({
       id: res.data.id, serial: res.data.serial, name: fd.get('name'), mobile: fd.get('mobile'),
-      seats, delegateFee: res.data.totalFee, paidAmount: 0, dueAmount: res.data.totalFee, status: 'pending'
+      seats, delegateFee: res.data.totalFee, paidAmount: 0, dueAmount: res.data.totalFee, status: 'pending', createdAt: res.data.createdAt
     }, true);
   } catch (err) {
     showToast('একটি ত্রুটি হয়েছে: ' + err.message, 'error');
@@ -376,6 +376,7 @@ function showPaymentView(b, justBooked) {
       <span class="eyebrow" style="background:var(--cream-dark); color:var(--forest); border-color:var(--border);">💳 পেমেন্ট</span>
       <h2 style="margin-top:0;">${escapeHtml(currentPackage.spotName)}</h2>
       ${justBooked ? `<div class="pay-info-box" style="border-style:solid;">✅ আপনার বুকিং তথ্য জমা হয়েছে এবং সীট আপনার নামে ধরে রাখা হয়েছে। এখন পেমেন্ট সম্পন্ন করুন। এখন না পারলে পরে এই পেজে <strong>"আগে বুকিং দিয়েছেন কিন্তু পেমেন্ট বাকি?"</strong> অংশে মোবাইল নম্বর দিয়ে ফিরে আসতে পারবেন।</div>` : ''}
+      <div id="pay-timer" class="pay-info-box" style="display:none; border-style:solid; border-color:var(--red);"></div>
       <div class="pay-summary">
         <div class="row"><span>ক্রম নং</span><span class="colon">:</span><strong>${toBengaliNumber(b.serial)}</strong></div>
         <div class="row"><span>নাম</span><span class="colon">:</span><strong>${escapeHtml(b.name)}</strong></div>
@@ -405,6 +406,27 @@ function showPaymentView(b, justBooked) {
 
   const dyn = qs('#pay-dynamic');
   const submitBtn = qs('#pay-submit-btn');
+
+  // ৩০ মিনিটের কাউন্টডাউন (শুধু যতক্ষণ কোনো পেমেন্ট জমা হয়নি)
+  if (b.createdAt && Number(b.paidAmount) === 0 && b.status === 'pending') {
+    const deadline = new Date(b.createdAt).getTime() + 30 * 60 * 1000;
+    const timerEl = qs('#pay-timer');
+    const tick = () => {
+      const el = qs('#pay-timer');
+      if (!el) { clearInterval(iv); return; }
+      const left = deadline - Date.now();
+      if (left <= 0) {
+        clearInterval(iv);
+        qs('#page-content').innerHTML = `<div class="empty-state"><div style="font-size:3rem;">⏰</div><h2>সময় শেষ</h2><p>৩০ মিনিটের মধ্যে পেমেন্ট জমা না দেওয়ায় আপনার বুকিং বাতিল হয়ে গেছে এবং সীট খালি করা হয়েছে।</p><a href="booking.html?pkg=${encodeURIComponent(pkgIdentifier)}" class="btn btn-primary" style="margin-top:16px;">নতুন করে বুকিং দিন</a></div>`;
+        return;
+      }
+      const m = Math.floor(left / 60000), sec = Math.floor((left % 60000) / 1000);
+      el.style.display = '';
+      el.innerHTML = `⏳ পেমেন্ট তথ্য জমা দেওয়ার বাকি সময়: <strong style="color:var(--red);">${toBengaliNumber(m)} মিনিট ${toBengaliNumber(String(sec).padStart(2, '0'))} সেকেন্ড</strong><br><span class="text-muted">এই সময়ের মধ্যে জমা না দিলে বুকিং বাতিল হয়ে সীট খালি হয়ে যাবে।</span>`;
+    };
+    var iv = setInterval(tick, 1000);
+    tick();
+  }
 
   qs('#pay-kind').addEventListener('change', async (e) => {
     const kind = e.target.value;

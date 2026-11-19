@@ -29,7 +29,7 @@ html { scroll-behavior: smooth; }
 body {
   margin: 0;
   font-family: var(--font-body);
-  background: var(--cream);
+  background: #f5ffd9;
   color: var(--ink);
   line-height: 1.6;
 }
@@ -201,7 +201,7 @@ button, input, select, textarea {
   left: 0;
   right: 0;
   height: 60px;
-  background: var(--cream);
+  background: #f5ffd9;
   clip-path: polygon(0 100%, 100% 100%, 100% 40%, 75% 100%, 50% 30%, 25% 100%, 0 50%);
 }
 
@@ -269,7 +269,7 @@ button, input, select, textarea {
 .btn:active { transform: scale(0.97); }
 
 .btn-primary {
-  background: var(--gold);
+  background: transparent;
   color: #710606;
   box-shadow: 0 6px 18px rgba(233, 149, 5, 0.35);
   border: 2px solid #034f30;
@@ -920,3 +920,10 @@ tbody tr:hover { background: var(--cream); }
   padding: 7px 14px;
   background: rgb(1 14 9 / 65%);
 }
+
+/* ---------- আপডেট: মেনু, নাম, প্যাকেজ কার্ডের শিরোনাম ---------- */
+.header-nav a { font-weight: 550; }
+.site-header .brand-name { color: #710606; }
+.pkg-card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pkg-card-top .spot-name { order: 1; flex: 1; min-width: 0; }
+.pkg-card-top .pkg-badge { order: 2; position: static; flex-shrink: 0; align-self: center; }
