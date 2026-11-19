@@ -9,6 +9,41 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@600;700&family=Hind+Siliguri:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="style.css">
+<style id="page-size-style">@page { size: 80mm 150mm; margin: 0; }</style>
+<style>
+/* ---------- থার্মাল ইউজ রিসিপ্ট টিকেট (৮০ মিমি / ৫৮ মিমি) ---------- */
+#ticket-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 28px; align-items: flex-start; }
+.receipt {
+  width: 302px; background: #fff; color: #000; padding: 14px 14px 18px; font-size: 13px; line-height: 1.45;
+  font-family: 'Hind Siliguri', sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,0.18); border: 1px solid #ddd;
+  position: relative;
+}
+#ticket-container.paper-58 .receipt { width: 219px; font-size: 11.5px; padding: 10px 9px 14px; }
+.receipt .r-center { text-align: center; }
+.receipt .r-logo { width: 54px; height: 54px; object-fit: cover; border-radius: 50%; margin: 0 auto 4px; display: block; filter: grayscale(1) contrast(1.4); }
+#ticket-container.paper-58 .receipt .r-logo { width: 40px; height: 40px; }
+.receipt .r-name { font-weight: 700; font-size: 1.2em; }
+.receipt .r-sub { font-size: 0.85em; }
+.receipt .r-title { font-weight: 700; font-size: 1.05em; border: 1.5px solid #000; display: inline-block; padding: 1px 12px; margin: 6px 0 2px; }
+.receipt hr { border: 0; border-top: 1.5px dashed #000; margin: 8px 0; }
+.receipt .r-row { display: flex; justify-content: space-between; gap: 8px; padding: 1.5px 0; }
+.receipt .r-row span { flex-shrink: 0; }
+.receipt .r-row strong { text-align: right; word-break: break-word; }
+.receipt .r-seats { text-align: center; font-weight: 700; font-size: 1.25em; padding: 4px 0; border: 1.5px solid #000; margin: 4px 0; word-break: break-word; }
+.receipt .r-due { font-weight: 700; font-size: 1.05em; }
+.receipt .r-foot { text-align: center; font-size: 0.8em; margin-top: 4px; }
+.paper-pick { display: inline-flex; gap: 6px; align-items: center; }
+.paper-pick .btn.active { background: var(--forest); color: #fff; }
+@media print {
+  html, body { background: #fff !important; }
+  .section { padding: 0 !important; }
+  .container { padding: 0 !important; max-width: none !important; }
+  #ticket-container { display: block; }
+  .receipt { box-shadow: none; border: 0; width: 100% !important; padding: 3mm 3mm 6mm; margin: 0; break-inside: avoid; page-break-inside: avoid; page-break-after: always; font-size: 12px; }
+  #ticket-container.paper-58 .receipt { font-size: 10.5px; padding: 2mm 2mm 5mm; }
+  .receipt:last-child { page-break-after: auto; }
+}
+</style>
 </head>
 <body>
 
@@ -81,38 +116,73 @@ qs('#search-form').addEventListener('submit', async (e) => {
   results.innerHTML = `
     <div class="flex-between no-print" style="margin-bottom:16px;">
       <h3 style="margin:0;">${toBengaliNumber(res.data.length)}টি টিকেট পাওয়া গেছে</h3>
-      <button class="btn btn-forest btn-sm" onclick="window.print()">🖨️ সব প্রিন্ট করুন</button>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+        <div class="paper-pick">থার্মাল পেপার:
+          <button type="button" class="btn btn-sm btn-outline-forest paper-btn" data-w="80">৮০ মিমি</button>
+          <button type="button" class="btn btn-sm btn-outline-forest paper-btn" data-w="58">৫৮ মিমি</button>
+        </div>
+        <button class="btn btn-forest btn-sm" onclick="printAll()">🖨️ সব প্রিন্ট করুন</button>
+      </div>
     </div>
+    <p class="text-muted no-print" style="margin-top:0; font-size:0.85rem;">নিচে থার্মাল পেপারে যেমন প্রিন্ট হবে তার প্রিভিউ দেখানো হচ্ছে। প্রিন্টের সময় আপনার থার্মাল প্রিন্টার বেছে নিন এবং Margins: None / Scale: 100% দিন।</p>
     <div id="ticket-container">
       ${res.data.map(renderTicket).join('')}
     </div>
   `;
+  setPaper(getPaper());
+  qsa('.paper-btn').forEach(b => b.addEventListener('click', () => setPaper(b.dataset.w)));
 });
+
+function getPaper() { try { return localStorage.getItem('tg_paper') === '58' ? '58' : '80'; } catch (e) { return '80'; } }
+// কাগজের উচ্চতা টিকেটের মাপ অনুযায়ী ঠিক করা (রোল কাগজে বাড়তি ফাঁকা কম হয়)
+function updatePageSize() {
+  const w = getPaper();
+  const cards = qsa('.receipt').filter(c => c.style.display !== 'none');
+  let maxPx = 0;
+  cards.forEach(c => { maxPx = Math.max(maxPx, c.getBoundingClientRect().height); });
+  const hmm = maxPx ? Math.ceil(maxPx * 0.2646 + 4) : 150;
+  qs('#page-size-style').textContent = `@page { size: ${w}mm ${hmm}mm; margin: 0; }`;
+}
+function setPaper(w) {
+  try { localStorage.setItem('tg_paper', w); } catch (e) {}
+  const c = qs('#ticket-container'); if (!c) return;
+  c.classList.toggle('paper-58', w === '58');
+  qsa('.paper-btn').forEach(b => b.classList.toggle('active', b.dataset.w === w));
+  updatePageSize();
+}
+function printAll() { updatePageSize(); window.print(); }
+window.addEventListener('beforeprint', updatePageSize);
 
 function renderTicket(b) {
   const seatList = (b.seats || []).map(s => s.vehicleName + '-' + s.seatNo).join(', ');
-  const logoImg = SITE_CONFIG.logoUrl ? `<img src="${escapeHtml(imgUrl(SITE_CONFIG.logoUrl, 200))}" class="ticket-logo" alt="logo">` : '';
+  const logoImg = SITE_CONFIG.logoUrl ? `<img src="${escapeHtml(imgUrl(SITE_CONFIG.logoUrl, 200))}" class="r-logo" alt="logo">` : '';
+  const pk = b.packageInfo || {};
+  const due = Number(b.dueAmount) || 0;
   return `
-    <div class="ticket-card">
-      <div class="ticket-header">
+    <div class="receipt ticket-card">
+      <div class="r-center">
         ${logoImg}
-        <div class="ticket-group-name js-group-name-bn"></div>
-        <div class="ticket-status">✅ কনফার্মড</div>
+        <div class="r-name">${escapeHtml(SITE_CONFIG.groupNameBn)}</div>
+        <div class="r-sub">${escapeHtml(SITE_CONFIG.groupNameEn)}</div>
+        <div class="r-title">✔ কনফার্মড টিকেট</div>
       </div>
-      <div class="ticket-body">
-        <div class="ticket-row"><span>প্যাকেজ</span><strong>${escapeHtml(b.packageInfo ? b.packageInfo.spotName : '')}</strong></div>
-        <div class="ticket-row"><span>ভ্রমণ তারিখ</span><strong>${b.packageInfo ? formatDate(b.packageInfo.startDate) + ' - ' + formatDate(b.packageInfo.endDate) : ''}</strong></div>
-        <div class="ticket-row"><span>বুকিংয়ের তারিখ</span><strong>${formatDate(b.date)}</strong></div>
-        <div class="ticket-row"><span>যাত্রীর নাম</span><strong>${escapeHtml(b.name)}</strong></div>
-        <div class="ticket-row"><span>মোবাইল</span><strong>${escapeHtml(b.mobile)}</strong></div>
-        <div class="ticket-row"><span>সীট নং</span><strong>${escapeHtml(seatList)}</strong></div>
-        <div class="ticket-row"><span>মোট ফি</span><strong>${formatTaka(b.delegateFee)}</strong></div>
-        <div class="ticket-row"><span>জমা</span><strong>${formatTaka(b.paidAmount)}</strong></div>
-        <div class="ticket-row"><span>বকেয়া</span><strong style="color:${Number(b.dueAmount) > 0 ? 'var(--red)' : 'var(--forest)'};">${formatTaka(b.dueAmount)}</strong></div>
-      </div>
-      <div class="ticket-footer">
-        <div class="ticket-credit">${escapeHtml(SITE_CONFIG.poweredByLine)}</div>
-      </div>
+      <hr>
+      <div class="r-row"><span>প্যাকেজ</span><strong>${escapeHtml(pk.spotName || '')}</strong></div>
+      <div class="r-row"><span>যাত্রা</span><strong>${pk.startDate ? formatDate(pk.startDate) : ''}</strong></div>
+      <div class="r-row"><span>ফেরা</span><strong>${pk.endDate ? formatDate(pk.endDate) : ''}</strong></div>
+      <hr>
+      <div class="r-row"><span>যাত্রী</span><strong>${escapeHtml(b.name)}</strong></div>
+      <div class="r-row"><span>মোবাইল</span><strong>${escapeHtml(b.mobile)}</strong></div>
+      <div class="r-row"><span>বুকিং তারিখ</span><strong>${formatDate(b.date)}</strong></div>
+      <div class="r-row"><span>ক্রম নং</span><strong>${toBengaliNumber(b.serial)}</strong></div>
+      <div class="r-seats">সীট: ${escapeHtml(seatList)}</div>
+      <hr>
+      <div class="r-row"><span>মোট ফি</span><strong>${formatTaka(b.delegateFee)}</strong></div>
+      <div class="r-row"><span>জমা</span><strong>${formatTaka(b.paidAmount)}</strong></div>
+      <div class="r-row r-due"><span>বকেয়া</span><strong>${due > 0 ? formatTaka(due) : 'পরিশোধিত'}</strong></div>
+      <hr>
+      <div class="r-foot">ধন্যবাদ, শুভ যাত্রা!</div>
+      <div class="r-foot">${escapeHtml(SITE_CONFIG.poweredByLine)}</div>
       <div class="no-print" style="text-align:center; margin-top:10px;">
         <button class="btn btn-sm btn-outline-forest print-single-btn">🖨️ শুধু এই টিকেট প্রিন্ট</button>
       </div>
@@ -125,6 +195,7 @@ document.addEventListener('click', (e) => {
     const card = e.target.closest('.ticket-card');
     const all = qsa('.ticket-card');
     all.forEach(c => { if (c !== card) c.style.display = 'none'; });
+    updatePageSize();
     window.print();
     all.forEach(c => c.style.display = '');
   }
